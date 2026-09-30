@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>RozpočetGuru 2.4</title>
+  <title>RozpočetGuru 2.5</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,12 +15,13 @@
   </header>
 
   <section id="home" class="page active">
+    <div class="card settings"><label for="reportMonth">Obdobie prehľadu</label><input id="reportMonth" class="input" type="month" onchange="render()"><div id="importCoverage" class="notice neutral small"></div></div>
     <div class="hero">
       <div class="hero-head"><div><div class="muted">Celkový majetok</div><div id="worth" class="hero-value">—</div><div id="worthNote" class="small muted">Účty + investície</div></div><span class="pill">EUR základ</span></div>
       <div class="hero-grid">
         <div><span>Príjem</span><strong id="inc">—</strong></div>
         <div><span>Výdavky</span><strong id="exp">—</strong></div>
-        <div><span>Cash-flow</span><strong id="flow">—</strong></div>
+        <div><span>Príjem − spotreba</span><strong id="flow">—</strong></div>
       </div>
     </div>
 
@@ -33,7 +34,7 @@
     <div class="section-head"><h2>Rozpočet</h2><button class="link" onclick="nav('plan')">Plány</button></div>
     <div id="budgetHome" class="card"></div>
 
-    <div class="section-head"><h2>Analytika</h2><span class="muted small">tento mesiac</span></div>
+    <div class="section-head"><h2>Analytika</h2><span class="muted small">vybrané obdobie</span></div>
     <div id="analyticsHome" class="analytics-grid"></div>
     <div id="alertsHome"></div>
 
@@ -60,7 +61,7 @@
     <div class="page-title"><div><div class="eyebrow">AI PORADCA</div><h1>Guru</h1></div></div>
     <div class="card guru-intro"><div class="orb">✦</div><div><strong>Finančný prehľad bez dvojitého počítania.</strong><p class="muted">Vlastné prevody a vklady do investícií nie sú bežná spotreba.</p></div></div>
     <div id="guruCards" class="two-grid"></div>
-    <div class="card chat-card"><div id="answer" class="answer muted">Spýtaj sa na výdavky, rozpočet, ciele, Trading 212 alebo SLSP fondy.</div><div class="chat"><input id="q" class="input" placeholder="Napr. Ako som na tom tento mesiac?"><button class="primary" onclick="ask()">Odoslať</button></div></div>
+    <div class="card chat-card"><div id="answer" class="answer muted">Spýtaj sa na výdavky, rozpočet, ciele, Trading 212 alebo SLSP fondy.</div><div class="chat"><input id="q" class="input" placeholder="Napr. Ako som na tom vybrané obdobie?"><button class="primary" onclick="ask()">Odoslať</button></div></div>
   </section>
 
   <section id="plan" class="page">
@@ -99,6 +100,7 @@
       <label>Referenčný kurz CZK za 1 €</label><div class="inline"><input id="fx" class="input" type="number" step=".0001" placeholder="napr. 24.80"><button class="secondary" onclick="saveFx()">Uložiť</button></div>
       <div class="salary"><span class="muted small">Očakávaná čistá mzda</span><strong>≈ 45 000 Kč / mesiac</strong><span class="muted small">Raiffeisenbank CZK · iba informatívne</span></div>
     </div>
+    <div class="card settings"><h3>Bankové výpisy</h3><p class="muted small">Import spracovaných výpisov pridá transakcie a zachová existujúce dáta. Zostatky a portfólio sa nemenia. Pred importom odporúčame exportovať zálohu.</p><label class="secondary filebtn">Načítať spracovaný výpis<input type="file" accept="application/json" onchange="previewStatement(this.files[0]);this.value='' "></label><div id="statementPreview"></div></div>
     <div class="card settings"><h3>Dáta a bezpečnosť</h3><div class="notice">Bankové prepojenie neskôr iba read-only. Heslo, PIN, CVV ani autorizačný kód sa do RozpočetGuru nezadávajú.</div><div class="two-grid"><button class="secondary" onclick="backup()">Exportovať</button><label class="secondary filebtn">Importovať<input id="importFile" type="file" accept="application/json" onchange="restore(this.files[0])"></label></div></div>
   </section>
 </main>
@@ -158,6 +160,7 @@
   <div class="actions"><button class="secondary" onclick="closeGoal()">Zrušiť</button><button class="primary" onclick="saveGoal()">Uložiť</button></div>
 </dialog>
 
+<dialog id="reviewdlg"><h2>Zaradenie transakcie</h2><div id="reviewDescription" class="notice neutral small"></div><label>Typ pohybu</label><select id="reviewKind" class="input"><option value="unresolved">Na kontrolu</option><option value="expense">Výdavok / spotreba</option><option value="income">Príjem / zárobok</option><option value="own_transfer">Vlastný prevod</option><option value="investment_outflow">Vklad do investícií</option><option value="investment_inflow">Výber / refundácia investícií</option><option value="cash_deposit">Vklad hotovosti</option><option value="cash_withdrawal">Výber hotovosti</option><option value="loan_principal">Splátka istiny</option><option value="refund">Refundácia</option><option value="own_fx_transfer">Vlastná menová konverzia</option></select><label>Kategória</label><input id="reviewCategory" class="input"><div class="actions"><button class="secondary" onclick="$('#reviewdlg').close()">Zrušiť</button><button class="primary" onclick="saveReview()">Potvrdiť zaradenie</button></div></dialog>
 <script src="app.js"></script>
 </body>
 </html>

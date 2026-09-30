@@ -41,9 +41,9 @@ function save(){
 function acc(id){return A.find(a=>a.id===id)}
 function toE(v,c){if(c==="EUR")return Number(v)||0;if(c==="CZK"&&FX)return (Number(v)||0)/FX;return null}
 function monthKey(d){return d?.slice(0,7)||""}
-function currentMonthKey(){return today().slice(0,7)}
+function currentMonthKey(){return $("#reportMonth")?.value||today().slice(0,7)}
 function offsetMonthKey(offset){
-  const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+offset);
+  const d=new Date(currentMonthKey()+"-01T12:00:00"); d.setMonth(d.getMonth()+offset);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
 function isMonth(d,key=currentMonthKey()){return monthKey(d)===key}
@@ -163,6 +163,7 @@ function txHtml(x,actions=false){
   return `<div class="row"><div class="row-icon">${icon}</div><div class="row-main"><div class="row-name">${esc(x.n||"Transakcia")}</div><div class="row-meta">${esc(meta)}</div>${actions?`<div class="mini-actions"><button class="mini" onclick="openTx(${x.id})">Upraviť</button><button class="mini" onclick="delTx(${x.id})">Zmazať</button></div>`:""}</div><div class="row-value ${cls}">${val}</div></div>`;
 }
 function render(){
+  renderImportCoverage();
   const mt=monthTotals(), prev=monthTotals(offsetMonthKey(-1)), nw=netWorth(), is=invStats(), spend=spendingByCat();
   $("#worth").textContent=nw.has&&nw.valid?eur(nw.value):"—";
   $("#worthNote").textContent=!nw.has?"Zadaj zostatky účtov.":!nw.valid?"Pre spoločný prepočet nastav CZK/EUR kurz.":"Bankové účty + investície.";
@@ -191,7 +192,7 @@ function render(){
 
   $("#recurringHome").innerHTML=rec.length?rec.slice(0,3).map(r=>`<div class="recurring-row"><div><strong>${esc(r.name)}</strong><span class="small muted">${esc(r.category)} · priemer ${eur(r.avg)}</span></div><div class="due">odhad ďalšej<br><strong>${r.next}</strong></div></div>`).join(""):'<span class="muted">Zatiaľ nemám dosť histórie na rozpoznanie opakovaných platieb.</span>';
 
-  const rows=[...T].sort((a,b)=>(b.d||"").localeCompare(a.d||"")||(b.id||0)-(a.id||0));
+  const rows=T.filter(x=>isMonth(x.d)).sort((a,b)=>(b.d||"").localeCompare(a.d||"")||(b.id||0)-(a.id||0));
   $("#recent").innerHTML=rows.slice(0,5).map(x=>txHtml(x)).join("")||'<span class="muted">Žiadne transakcie.</span>';
   const q=($("#search")?.value||"").toLowerCase(),tf=$("#typeFilter")?.value||"all";
   const filtered=rows.filter(x=>(tf==="all"||x.kind===tf)&&(`${x.n||""} ${x.c||""} ${x.platform||""}`.toLowerCase().includes(q)));
@@ -338,17 +339,74 @@ function ask(){
   else if(/nezvy|odchyl|anom|nárast/.test(q))r=spikes.length?`Výraznejší nárast vidím v ${spikes.map(x=>`${x.cat} (+${x.pct.toFixed(0)} %)`).join(", ")}.`:"Momentálne nevidím výrazný nárast kategórie oproti posledným mesiacom.";
   else if(/rozpo|limit/.test(q)){const over=B.filter(b=>(sp[b.category]||0)>b.limit);r=over.length?`Nad limitom: ${over.map(x=>x.category).join(", ")}.`:"Momentálne nemáš žiadny nastavený rozpočet nad limitom.";}
   else if(/cieľ|rezerv|bývan/.test(q))r=G.length?G.map(g=>`${g.name}: ${eur(g.current)} z ${eur(g.target)}`).join(" · "):"Zatiaľ nemáš nastavené ciele.";
-  else r=mt.valid?`Tento mesiac: príjem ${eur(mt.inc)}, výdavky ${eur(mt.exp)}, cash-flow ${eur(mt.flow)}. Poplatky za vlastné prevody rátam ako skutočný náklad, samotný prevod nie.`:"Na spoločný EUR prepočet nastav kurz CZK/EUR.";
+  else r=mt.valid?`Tento mesiac: príjem ${eur(mt.inc)}, výdavky ${eur(mt.exp)}, príjem − spotreba ${eur(mt.flow)}. Poplatky za vlastné prevody rátam ako skutočný náklad, samotný prevod nie.`:"Na spoločný EUR prepočet nastav kurz CZK/EUR.";
   $("#answer").textContent=r;
 }
 function backup(){
-  const data={version:"2.4",accounts:A,transactions:T,investments:I,budgets:B,goals:G,fxRateCZKPerEUR:FX,expectedSalaryCZK:45000};
-  const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="rozpocetguru-2.4-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+  const data={version:"2.5",accounts:A,transactions:T,investments:I,budgets:B,goals:G,fxRateCZKPerEUR:FX,expectedSalaryCZK:45000};
+  const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="rozpocetguru-2.5-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
 }
-function restore(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(Array.isArray(d.accounts))A=d.accounts;if(Array.isArray(d.transactions))T=d.transactions;if(Array.isArray(d.investments))I=d.investments;if(Array.isArray(d.budgets))B=d.budgets;if(Array.isArray(d.goals))G=d.goals;if(d.fxRateCZKPerEUR)FX=Number(d.fxRateCZKPerEUR);save();render();alert("Záloha bola importovaná.")}catch{alert("Neplatný súbor zálohy.")}};r.readAsText(file)}
+function restore(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.schema)throw Error("Výpis importuj cez Bankové výpisy.");if(!d||!Array.isArray(d.accounts)||!Array.isArray(d.transactions)||!Array.isArray(d.investments))throw Error("Neplatná záloha.");if(Array.isArray(d.accounts))A=d.accounts;if(Array.isArray(d.transactions))T=d.transactions;if(Array.isArray(d.investments))I=d.investments;if(Array.isArray(d.budgets))B=d.budgets;if(Array.isArray(d.goals))G=d.goals;if(d.fxRateCZKPerEUR)FX=Number(d.fxRateCZKPerEUR);save();render();alert("Záloha bola importovaná.")}catch{alert("Neplatný súbor zálohy.")}};r.readAsText(file)}
 
 $("#search").addEventListener("input",render);
 $("#trfa").addEventListener("input",ratePreview);
 $("#trta").addEventListener("input",ratePreview);
 $("#q").addEventListener("keydown",e=>{if(e.key==="Enter")ask()});
+let statementDraft=null,reviewId=null;
+const statementKinds=['expense','income','own_transfer','own_fx_transfer','probable_own_transfer','investment_inflow','investment_outflow','probable_investment_outflow','cash_deposit','cash_withdrawal','loan_principal','refund','unresolved'];
+function validateStatement(data){
+ if(!data||data.schema!=='rozpocetguru-statement-draft-v1'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(data.period)||!Array.isArray(data.transactions)||data.transactions.length>10000)throw Error('Nesprávny formát výpisu.');
+ const keys=new Set();
+ for(const r of data.transactions){
+  if(!r||typeof r.id!=='string'||keys.has(r.id)||!A.some(a=>a.id===r.account&&a.currency===r.currency)||typeof r.amount!=='number'||!Number.isFinite(r.amount)||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||r.date.slice(0,7)!==data.period||!statementKinds.includes(r.kind)||typeof r.description!=='string'||typeof r.category!=='string'||typeof r.needs_review!=='boolean')throw Error('Neplatná alebo duplicitná transakcia.');
+  const d=new Date(r.date+'T12:00:00Z');if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==r.date)throw Error('Neplatný dátum.');
+  if((r.kind==='income'&&r.amount<0)||(r.kind==='expense'&&r.amount>0))throw Error('Typ pohybu nesedí so znamienkom sumy.');
+  keys.add(r.id);
+ }
+ return data;
+}
+function importedAlready(r){return T.some(x=>x.importId===r.id||(r.bank_transaction_id&&x.accountId===r.account&&x.bankTransactionId===r.bank_transaction_id))}
+async function previewStatement(file){
+ statementDraft=null;$('#statementPreview').textContent='';if(!file)return;
+ try{
+  if(file.size>10*1024*1024)throw Error('Súbor je príliš veľký.');
+  const data=validateStatement(JSON.parse(await file.text()));statementDraft=data;
+  const fresh=data.transactions.filter(r=>!importedAlready(r)),duplicate=data.transactions.length-fresh.length;
+  $('#statementPreview').innerHTML=`<div class="notice neutral">Obdobie ${esc(data.period)} · ${fresh.length} nových · ${duplicate} už importovaných · ${fresh.filter(r=>r.needs_review).length} na kontrolu. Nejasné prevody a hotovosť sa nezapočítajú do spotreby ani zárobku. Ručne zadané duplicity treba skontrolovať.</div><button class="primary" onclick="commitStatement()" ${fresh.length?'':'disabled'}>Pridať transakcie</button>`;
+ }catch(e){$('#statementPreview').textContent=e.message||'Výpis sa nepodarilo načítať.'}
+}
+function commitStatement(){
+ if(!statementDraft)return;
+ const fresh=statementDraft.transactions.filter(r=>!importedAlready(r));
+ let nextId=Math.max(Date.now(),...T.map(x=>Number(x.id)||0))+1;
+ const additions=fresh.map(r=>({id:nextId++,importId:r.id,bankTransactionId:r.bank_transaction_id||null,source:'statement',d:r.date,kind:r.kind,accountId:r.account,currency:r.currency,a:Math.abs(r.amount),signedAmount:r.amount,n:r.bank_type||r.category,c:r.category,note:r.description,needsReview:r.needs_review,reviewReason:r.review_reason||'',platform:r.platform||null,otherAccount:r.other_account||null,originalAmount:r.original_amount??null,originalCurrency:r.original_currency||null}));
+ // Write first so storage errors cannot leave an unsaved in-memory import.
+ const merged=T.concat(additions);
+ try{localStorage.setItem(TKEY,JSON.stringify(merged))}catch{alert('Transakcie sa nepodarilo uložiť. Exportuj zálohu a skontroluj voľné miesto.');return}
+ T=merged;$('#reportMonth').value=statementDraft.period;statementDraft=null;$('#statementPreview').textContent=`Pridaných ${additions.length} transakcií.`;render();nav('txs');
+}
+function renderImportCoverage(){
+ const el=$('#importCoverage');if(!el)return;
+ const rows=T.filter(x=>isMonth(x.d)),imports=rows.filter(x=>x.source==='statement'),review=imports.filter(x=>x.needsReview);
+ el.textContent=imports.length?`${imports.length} importovaných pohybov · ${review.length} na kontrolu. Prehľad zahŕňa označenú spotrebu a zárobok; prevody, investície, hotovosť a istina sú samostatné pohyby. Zostatky ostávajú manuálne. Časti histórie na ďalších účtoch môžu chýbať.`:'Zobrazuje sa vybrané obdobie. Import nájdeš v Profile.';
+}
+const originalTxHtml=txHtml;
+txHtml=function(x,actions=false){
+ if(x.source!=='statement')return originalTxHtml(x,actions);
+ const account=acc(x.accountId),sign=x.signedAmount>=0?'+':'−';
+ return `<div class="row"><div class="row-icon">${x.needsReview?'?':'↕'}</div><div class="row-main"><div class="row-name">${esc(x.n)}</div><div class="row-meta">${esc(x.d)} · ${esc(account?.name||x.accountId)} · ${esc(x.c)}${x.needsReview?' · Na kontrolu':''}</div><details><summary class="small muted">Popis z výpisu</summary><p class="small">${esc(x.note)}</p><p class="small muted">${esc(x.reviewReason)}</p></details>${actions?`<div class="mini-actions"><button class="mini" onclick="openReview(${x.id})">Zaradiť</button><button class="mini" onclick="delTx(${x.id})">Zmazať</button></div>`:''}</div><div class="row-value">${sign}${money(x.a,x.currency)}</div></div>`;
+};
+function openReview(id){
+ const x=T.find(t=>t.id===id);if(!x||x.source!=='statement')return;reviewId=id;
+ $('#reviewDescription').textContent=money(x.signedAmount,x.currency)+' · '+x.note;
+ $('#reviewKind').value=statementKinds.includes(x.kind)&&![...$('#reviewKind').options].some(o=>o.value===x.kind)?'unresolved':x.kind;
+ $('#reviewCategory').value=x.c;$('#reviewdlg').showModal();
+}
+function saveReview(){
+ const x=T.find(t=>t.id===reviewId);if(!x)return;
+ const kind=$('#reviewKind').value,category=$('#reviewCategory').value.trim();if(!category)return alert('Zadaj kategóriu.');
+ if((kind==='income'&&x.signedAmount<0)||(kind==='expense'&&x.signedAmount>0))return alert('Typ pohybu nesedí so znamienkom sumy.');
+ x.kind=kind;x.c=category;x.needsReview=kind==='unresolved';save();$('#reviewdlg').close();render();
+}
+
 save();render();
