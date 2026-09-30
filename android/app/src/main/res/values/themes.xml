@@ -1,0 +1,16 @@
+<resources>
+    <style name="Theme.RozpocetGuru" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">@color/rg_green</item>
+        <item name="android:navigationBarColor">@color/rg_background</item>
+        <item name="android:statusBarColor">@color/rg_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowBackground">@color/rg_background</item>
+    </style>
+
+    <style name="Theme.RozpocetGuru.Splash" parent="Theme.RozpocetGuru">
+        <item name="android:windowBackground">@drawable/splash_legacy</item>
+    </style>
+</resources>
