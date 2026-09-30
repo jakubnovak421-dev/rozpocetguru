@@ -3,3 +3,6 @@
 @media(max-width:430px){.analytics-grid{grid-template-columns:1fr 1fr 1fr}.analytics-card{padding:10px}.analytics-card strong{font-size:14px}}
 
 input[type=file]{display:block;max-width:100%;font-size:13px}input[type=file]::file-selector-button{background:#70e3b0;border:0;border-radius:8px;padding:10px;margin-right:8px;color:#07140f}textarea{resize:vertical}details p{white-space:pre-wrap;overflow-wrap:anywhere}.row-value{max-width:125px;overflow-wrap:anywhere}.row-meta{overflow-wrap:anywhere}.mini{min-height:34px}#statementPreview{overflow-wrap:anywhere}button:disabled{opacity:.5;cursor:default}.settings .two-grid{grid-template-columns:1fr}summary{cursor:pointer;padding:8px 0}
+
+
+.guru-chips{display:flex;flex-wrap:wrap;gap:8px}.guru-chips button{font-size:13px;padding:9px 12px}.guru-turn{border-bottom:1px solid #253650;padding:16px 0}.guru-turn p{white-space:pre-wrap;overflow-wrap:anywhere;color:#c0cddd;line-height:1.65}.guru-turn strong{color:#70e3b0}#guruExportText{font:13px/1.5 system-ui}#guruCards{margin-top:12px}#guru .settings{margin-top:14px}

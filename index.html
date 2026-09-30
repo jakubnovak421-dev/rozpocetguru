@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>RozpočetGuru 2.5.1</title>
-  <link rel="stylesheet" href="style.css?v=2.5.1">
+  <title>RozpočetGuru 2.6</title>
+  <link rel="stylesheet" href="style.css?v=2.6">
 </head>
 <body>
 <main class="shell">
   <header class="topbar">
-    <div><div class="eyebrow">OSOBNÉ FINANCIE</div><div class="small muted">Verzia 2.5.1</div><div class="brand">Rozpočet<span>Guru</span></div></div>
+    <div><div class="eyebrow">OSOBNÉ FINANCIE</div><div class="small muted">Verzia 2.6</div><div class="brand">Rozpočet<span>Guru</span></div></div>
     <button class="primary compact" onclick="openTx()">＋ Transakcia</button>
   </header>
 
@@ -59,9 +59,15 @@
 
   <section id="guru" class="page">
     <div class="page-title"><div><div class="eyebrow">PREHĽAD A PRAVIDLÁ</div><h1>Guru</h1></div></div>
-    <div class="card guru-intro"><div class="orb">✦</div><div><strong>Finančný prehľad bez dvojitého počítania.</strong><p class="muted">Vlastné prevody a vklady do investícií nie sú bežná spotreba.</p></div></div>
+    <div class="card guru-intro"><div class="orb">✦</div><div><strong>Poradca, ktorý pozná hranice údajov.</strong><p id="guruMode" class="small muted">Lokálny rozbor</p></div></div>
     <div id="guruCards" class="two-grid"></div>
-    <div class="card chat-card"><div id="answer" class="answer muted">Spýtaj sa na výdavky, rozpočet, ciele, Trading 212 alebo SLSP fondy.</div><div class="chat"><input id="q" class="input" placeholder="Napr. Ako som na tom vybrané obdobie?"><button class="primary" onclick="ask()">Odoslať</button></div></div>
+    <div class="card chat-card"><p class="muted small">Počíta z vybraného mesiaca v Domov. Pri otázkach o splátkach alebo dostupných peniazoch vysvetlí aj chýbajúce údaje.</p>
+      <div class="guru-chips"><button class="secondary" onclick="askGuru('Zhrň môj mesiac')">Môj mesiac</button><button class="secondary" onclick="askGuru('Najväčšie výdavky')">Výdavky</button><button class="secondary" onclick="askGuru('Moje splátky')">Splátky</button><button class="secondary" onclick="askGuru('Čo je na kontrolu?')">Na kontrolu</button><button class="secondary" onclick="askGuru('Moje ciele a rezerva')">Ciele</button><button class="secondary" onclick="askGuru('Moje investície')">Investície</button></div>
+      <div id="guruConversation" aria-live="polite"></div><p id="guruStatus" class="small muted" role="status">Vyber tému alebo polož otázku.</p>
+      <label for="q">Tvoja otázka</label><div class="chat"><input id="q" class="input" placeholder="Čo ovplyvnilo moje výdavky?"><button class="primary" onclick="ask()">Rozobrať</button></div>
+      <button class="link" onclick="clearGuruConversation()">Vymazať rozhovor</button>
+    </div>
+    <div class="card settings"><h3>Podklady pre AI v ChatGPT</h3><p class="muted small">Priprav súhrn k otázke, skontroluj ho a vlož do ChatGPT. Obsahuje finančné súčty, kategórie a ciele; neobsahuje surové transakcie, IBAN ani bankové poznámky. Vlastné názvy kategórií a cieľov pred zdieľaním skontroluj.</p><button class="primary" onclick="prepareGuruReport()">Pripraviť pre ChatGPT</button><p class="small muted">Priamy AI chat v aplikácii vyžaduje samostatné zabezpečené pripojenie. Sem nezadávaj API kľúč.</p></div>
   </section>
 
   <section id="plan" class="page">
@@ -160,7 +166,8 @@
   <div class="actions"><button class="secondary" onclick="closeGoal()">Zrušiť</button><button class="primary" onclick="saveGoal()">Uložiť</button></div>
 </dialog>
 
-<dialog id="reviewdlg"><h2>Zaradenie transakcie</h2><div id="reviewDescription" class="notice neutral small"></div><label>Typ pohybu</label><select id="reviewKind" class="input"><option value="unresolved">Na kontrolu</option><option value="expense">Výdavok / spotreba</option><option value="income">Príjem / zárobok</option><option value="own_transfer">Vlastný prevod</option><option value="investment_outflow">Vklad do investícií</option><option value="investment_inflow">Výber / refundácia investícií</option><option value="cash_deposit">Vklad hotovosti</option><option value="cash_withdrawal">Výber hotovosti</option><option value="loan_principal">Splátka istiny</option><option value="refund">Refundácia</option><option value="own_fx_transfer">Vlastná menová konverzia</option></select><label>Kategória</label><input id="reviewCategory" class="input"><div class="actions"><button class="secondary" onclick="$('#reviewdlg').close()">Zrušiť</button><button class="primary" onclick="saveReview()">Potvrdiť zaradenie</button></div></dialog>
-<script src="app.js?v=2.5.1"></script>
+<dialog id="reviewdlg"><h2>Zaradenie transakcie</h2><div id="reviewDescription" class="notice neutral small"></div><label>Typ pohybu</label><select id="reviewKind" class="input"><option value="unresolved">Na kontrolu</option><option value="expense">Výdavok / spotreba</option><option value="income">Príjem / zárobok</option><option value="own_transfer">Vlastný prevod</option><option value="investment_outflow">Vklad do investícií</option><option value="investment_inflow">Výber / refundácia investícií</option><option value="cash_deposit">Vklad hotovosti</option><option value="cash_withdrawal">Výber hotovosti</option><option value="debt_payment">Splátka (rozpis neznámy)</option><option value="repayment">Vrátenie peňazí</option><option value="loan_principal">Splátka istiny</option><option value="refund">Refundácia</option><option value="own_fx_transfer">Vlastná menová konverzia</option></select><label>Kategória</label><input id="reviewCategory" class="input"><div class="actions"><button class="secondary" onclick="$('#reviewdlg').close()">Zrušiť</button><button class="primary" onclick="saveReview()">Potvrdiť zaradenie</button></div></dialog>
+<dialog id="guruExport"><h2>Skontroluj podklady</h2><textarea id="guruExportText" class="input" rows="15" aria-label="Súhrn pre ChatGPT"></textarea><p id="guruExportStatus" class="small muted" role="status"></p><div class="actions"><button class="secondary" onclick="$('#guruExport').close()">Zavrieť</button><button class="primary" onclick="copyGuruReport()">Skopírovať</button></div></dialog>
+<script src="app.js?v=2.6"></script>
 </body>
 </html>
