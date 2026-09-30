@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>RozpočetGuru 2.3</title>
+  <title>RozpočetGuru 2.4</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -32,6 +32,13 @@
 
     <div class="section-head"><h2>Rozpočet</h2><button class="link" onclick="nav('plan')">Plány</button></div>
     <div id="budgetHome" class="card"></div>
+
+    <div class="section-head"><h2>Analytika</h2><span class="muted small">tento mesiac</span></div>
+    <div id="analyticsHome" class="analytics-grid"></div>
+    <div id="alertsHome"></div>
+
+    <div class="section-head"><h2>Opakované platby</h2><button class="link" onclick="nav('guru')">Detail</button></div>
+    <div id="recurringHome" class="card list"></div>
 
     <div class="section-head"><h2>Guru radí</h2></div>
     <button class="guru-card" onclick="nav('guru')"><div class="eyebrow green">✦ POSTREH</div><strong id="homeInsightTitle">—</strong><p id="homeInsightBody" class="muted"></p></button>
