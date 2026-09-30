@@ -7,7 +7,7 @@ const EXP_CATS=["Bývanie","Potraviny","Reštaurácie","Auto a doprava","Palivo"
 const INC_CATS=["Mzda","Bonus","Vedľajší príjem","Refundácia","Iné príjmy"];
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const clone=o=>JSON.parse(JSON.stringify(o));
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
 const eur=n=>new Intl.NumberFormat("sk-SK",{style:"currency",currency:"EUR"}).format(Number(n)||0);
 const money=(n,c)=>new Intl.NumberFormat(c==="CZK"?"cs-CZ":"sk-SK",{style:"currency",currency:c,maximumFractionDigits:c==="CZK"?0:2}).format(Number(n)||0);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -179,23 +179,24 @@ function render(){
   const used=B.reduce((s,b)=>s+(spend[b.category]||0),0),limits=B.reduce((s,b)=>s+Number(b.limit||0),0);
   $("#budgetHome").innerHTML=B.length?`<div class="budget-top"><div><strong>${eur(used)} z ${eur(limits)}</strong><div class="muted small">${B.length} nastavených kategórií</div></div><div class="${used<=limits?"positive":"negative"}">${limits?Math.round(used/limits*100):0} %</div></div><div class="progress"><span style="width:${limits?Math.min(100,used/limits*100):0}%"></span></div>`:`<span class="muted">Zatiaľ nemáš nastavené mesačné rozpočty.</span>`;
 
-  const expCh=mt.valid&&prev.valid?percentChange(mt.exp,prev.exp):null;
+  const expCh=mt.valid&&prev.valid&&T.some(x=>isMonth(x.d,offsetMonthKey(-1)))?percentChange(mt.exp,prev.exp):null;
   const saveRate=mt.valid&&mt.inc>0?mt.flow/mt.inc*100:null;
   const rec=recurringPayments();
   $("#analyticsHome").innerHTML=`
     <div class="analytics-card"><span>Výdavky vs. minulý mesiac</span><strong class="${expCh===null?"trend-neutral":expCh>0?"trend-up":"trend-down"}">${expCh===null?"—":`${expCh>0?"+":""}${expCh.toFixed(0)} %`}</strong></div>
-    <div class="analytics-card"><span>Miera úspor</span><strong class="${saveRate===null?"trend-neutral":saveRate>=0?"positive":"negative"}">${saveRate===null?"—":saveRate.toFixed(1)+" %"}</strong></div>
+    <div class="analytics-card"><span>Podiel po spotrebe</span><strong class="${saveRate===null?"trend-neutral":saveRate>=0?"positive":"negative"}">${saveRate===null?"—":saveRate.toFixed(1)+" %"}</strong></div>
     <div class="analytics-card"><span>Opakované platby</span><strong>${rec.length}</strong></div>`;
 
   const alerts=[...budgetAlerts().map(x=>({type:x.used>x.limit?"over":"near",text:`${x.category}: ${eur(x.used)} z ${eur(x.limit)}`})),...categorySpikes().map(x=>({type:"spike",text:`${x.cat} je o ${x.pct.toFixed(0)} % vyššie než priemer posledných mesiacov.`}))];
-  $("#alertsHome").innerHTML=alerts.length?`<div class="alert-card"><strong>⚠ ${alerts[0].type==="over"?"Rozpočet prekročený":"Finančné upozornenie"}</strong><div class="small">${esc(alerts[0].text)}</div></div>`:`<div class="alert-card good"><strong>✓ Bez výrazného varovania</strong><div class="small">Rozpočty a kategórie momentálne neukazujú výraznú odchýlku.</div></div>`;
+  $("#alertsHome").innerHTML=alerts.length?`<div class="alert-card"><strong>⚠ ${alerts[0].type==="over"?"Rozpočet prekročený":"Finančné upozornenie"}</strong><div class="small">${esc(alerts[0].text)}</div></div>`:`<div class="alert-card good"><strong>Prehľad je predbežný</strong><div class="small">Hodnotenie závisí od úplnosti histórie a zaradenia platieb.</div></div>`;
 
   $("#recurringHome").innerHTML=rec.length?rec.slice(0,3).map(r=>`<div class="recurring-row"><div><strong>${esc(r.name)}</strong><span class="small muted">${esc(r.category)} · priemer ${eur(r.avg)}</span></div><div class="due">odhad ďalšej<br><strong>${r.next}</strong></div></div>`).join(""):'<span class="muted">Zatiaľ nemám dosť histórie na rozpoznanie opakovaných platieb.</span>';
 
   const rows=T.filter(x=>isMonth(x.d)).sort((a,b)=>(b.d||"").localeCompare(a.d||"")||(b.id||0)-(a.id||0));
   $("#recent").innerHTML=rows.slice(0,5).map(x=>txHtml(x)).join("")||'<span class="muted">Žiadne transakcie.</span>';
   const q=($("#search")?.value||"").toLowerCase(),tf=$("#typeFilter")?.value||"all";
-  const filtered=rows.filter(x=>(tf==="all"||x.kind===tf)&&(`${x.n||""} ${x.c||""} ${x.platform||""}`.toLowerCase().includes(q)));
+  const filtered=rows.filter(x=>(tf==="all"||(tf==="review"&&x.needsReview)||(tf==="investments"&&["capital","investment_outflow","investment_inflow","probable_investment_outflow"].includes(x.kind))||(tf==="transfer"&&["transfer","own_transfer","own_fx_transfer","probable_own_transfer"].includes(x.kind))||(tf==="other"&&!["expense","income","capital","transfer"].includes(x.kind))||x.kind===tf)&&(`${x.n||""} ${x.c||""} ${x.platform||""} ${x.note||""}`.toLowerCase().includes(q)));
+  $("#txPeriod").textContent=`Obdobie ${currentMonthKey()} · ${filtered.length} pohybov. Mesiac zmeníš v Domov.`;
   $("#txlist").innerHTML=filtered.map(x=>txHtml(x,true)).join("")||'<span class="muted">Nič som nenašiel.</span>';
 
   $("#pv").textContent=is.valid?eur(is.value):"—";
@@ -232,8 +233,8 @@ function renderProfile(){
   $("#fx").value=FX||"";
 }
 function renderGuru(mt,is,spend,prev,rec,alerts){
-  const over=B.filter(b=>(spend[b.category]||0)>b.limit),saveRate=mt.inc>0?mt.flow/mt.inc*100:null,expCh=percentChange(mt.exp,prev.exp);
-  $("#guruCards").innerHTML=`<div class="tile"><span class="muted small">Cash-flow</span><b class="${mt.flow>=0?"positive":"negative"}">${mt.valid?eur(mt.flow):"—"}</b></div><div class="tile"><span class="muted small">Miera úspor</span><b>${mt.valid&&saveRate!==null?saveRate.toFixed(1)+" %":"—"}</b></div><div class="tile"><span class="muted small">Výdavky vs min. mesiac</span><b>${expCh===null?"—":`${expCh>0?"+":""}${expCh.toFixed(0)} %`}</b></div><div class="tile"><span class="muted small">Opakované platby</span><b>${rec.length}</b></div>`;
+  const over=B.filter(b=>(spend[b.category]||0)>b.limit),saveRate=mt.inc>0?mt.flow/mt.inc*100:null,expCh=mt.valid&&prev.valid&&T.some(x=>isMonth(x.d,offsetMonthKey(-1)))?percentChange(mt.exp,prev.exp):null;
+  $("#guruCards").innerHTML=`<div class="tile"><span class="muted small">Príjem − spotreba</span><b class="${mt.flow>=0?"positive":"negative"}">${mt.valid?eur(mt.flow):"—"}</b></div><div class="tile"><span class="muted small">Podiel po spotrebe</span><b>${mt.valid&&saveRate!==null?saveRate.toFixed(1)+" %":"—"}</b></div><div class="tile"><span class="muted small">Výdavky vs min. mesiac</span><b>${expCh===null?"—":`${expCh>0?"+":""}${expCh.toFixed(0)} %`}</b></div><div class="tile"><span class="muted small">Opakované platby</span><b>${rec.length}</b></div>`;
   let title="Rozpočet je pripravený na reálne sledovanie.",body="Sledujem rozpočty, kategórie, opakované platby a investície oddelene.";
   if(alerts.length){title="Našiel som finančné upozornenie.";body=alerts[0].text}
   else if(rec.length){title=`Rozpoznal som ${rec.length} opakovanú/é platbu/y.`;body=`Najbližšie môže prísť ${rec[0].name}, odhadom ${rec[0].next}.`}
@@ -343,10 +344,29 @@ function ask(){
   $("#answer").textContent=r;
 }
 function backup(){
-  const data={version:"2.5",accounts:A,transactions:T,investments:I,budgets:B,goals:G,fxRateCZKPerEUR:FX,expectedSalaryCZK:45000};
-  const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="rozpocetguru-2.5-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+  const data={version:"2.5.1",accounts:A,transactions:T,investments:I,budgets:B,goals:G,fxRateCZKPerEUR:FX,expectedSalaryCZK:45000};
+  const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="rozpocetguru-2.5.1-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
 }
-function restore(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.schema)throw Error("Výpis importuj cez Bankové výpisy.");if(!d||!Array.isArray(d.accounts)||!Array.isArray(d.transactions)||!Array.isArray(d.investments))throw Error("Neplatná záloha.");if(Array.isArray(d.accounts))A=d.accounts;if(Array.isArray(d.transactions))T=d.transactions;if(Array.isArray(d.investments))I=d.investments;if(Array.isArray(d.budgets))B=d.budgets;if(Array.isArray(d.goals))G=d.goals;if(d.fxRateCZKPerEUR)FX=Number(d.fxRateCZKPerEUR);save();render();alert("Záloha bola importovaná.")}catch{alert("Neplatný súbor zálohy.")}};r.readAsText(file)}
+function readFileText(file){return typeof file.text==='function'?file.text():new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Súbor sa nepodarilo prečítať. Skús ho uložiť do Stiahnutých súborov.'));reader.readAsText(file)});}
+function previewStatementText(){const content=$('#statementText').value;return previewStatement({name:'vlozeny.json',size:new Blob([content]).size,text:async()=>content});}
+async function restore(file){
+ if(!file)return;
+ try{
+  if(file.size>10*1024*1024)throw Error('Záloha je príliš veľká.');
+  const d=JSON.parse((await readFileText(file)).replace(/^\uFEFF/,''));
+  if(d.schema)throw Error('Toto je výpis. Načítaj ho vyššie cez Bankové výpisy.');
+  if(!d||!Array.isArray(d.accounts)||!Array.isArray(d.transactions)||!Array.isArray(d.investments)||!Array.isArray(d.budgets||[])||!Array.isArray(d.goals||[])||!d.accounts.length)throw Error('Neplatná záloha.');
+  if(d.accounts.some(a=>!a||typeof a.id!=='string'||typeof a.name!=='string'||!['EUR','CZK'].includes(a.currency)||(a.balance!=null&&!Number.isFinite(a.balance))))throw Error('Neplatné účty v zálohe.');
+  if(d.transactions.some(t=>!t||!Number.isFinite(t.id)||typeof t.kind!=='string'||typeof t.d!=='string'||(!Number.isFinite(t.a)&&t.kind!=='transfer')))throw Error('Neplatné transakcie v zálohe.');
+  if(d.investments.some(i=>!i||!Number.isFinite(i.id)||typeof i.name!=='string'||!['EUR','CZK'].includes(i.currency)||!Number.isFinite(i.cost)||!Number.isFinite(i.currentValue)))throw Error('Neplatné investície v zálohe.');
+  if((d.budgets||[]).some(b=>!b||typeof b.category!=='string'||!Number.isFinite(b.limit))||(d.goals||[]).some(g=>!g||typeof g.name!=='string'||!Number.isFinite(g.current)||!Number.isFinite(g.target)))throw Error('Neplatné rozpočty alebo ciele.');
+  const fx=d.fxRateCZKPerEUR||0;if(!Number.isFinite(fx)||fx<0)throw Error('Neplatný kurz.');
+  if(!confirm('Obnovenie zálohy nahradí súčasné údaje. Máš exportovanú aktuálnu zálohu a chceš pokračovať?'))return;
+  const entries=[[AKEY,d.accounts],[TKEY,d.transactions],[IKEY,d.investments],[BKEY,d.budgets||[]],[GKEY,d.goals||[]],[FKEY,fx]],old=entries.map(([k])=>[k,localStorage.getItem(k)]);
+  try{for(const [k,v]of entries)localStorage.setItem(k,JSON.stringify(v))}catch(e){for(const[k,v]of old){if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}throw e}
+  A=d.accounts;T=d.transactions;I=d.investments;B=d.budgets||[];G=d.goals||[];FX=fx;render();alert('Záloha bola obnovená.');
+ }catch(e){alert(e instanceof SyntaxError?'Súbor nie je platná JSON záloha.':e.message||'Zálohu sa nepodarilo obnoviť.')}
+}
 
 $("#search").addEventListener("input",render);
 $("#trfa").addEventListener("input",ratePreview);
@@ -355,7 +375,7 @@ $("#q").addEventListener("keydown",e=>{if(e.key==="Enter")ask()});
 let statementDraft=null,reviewId=null;
 const statementKinds=['expense','income','own_transfer','own_fx_transfer','probable_own_transfer','investment_inflow','investment_outflow','probable_investment_outflow','cash_deposit','cash_withdrawal','loan_principal','refund','unresolved'];
 function validateStatement(data){
- if(!data||data.schema!=='rozpocetguru-statement-draft-v1'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(data.period)||!Array.isArray(data.transactions)||data.transactions.length>10000)throw Error('Nesprávny formát výpisu.');
+ if(!data||data.schema!=='rozpocetguru-statement-draft-v1'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(data.period)||!Array.isArray(data.transactions)||data.transactions.length>10000)throw Error('Vyber spracovaný výpis transakcie-2026-08.json. Zálohy patria do Obnoviť zálohu.');
  const keys=new Set();
  for(const r of data.transactions){
   if(!r||typeof r.id!=='string'||keys.has(r.id)||!A.some(a=>a.id===r.account&&a.currency===r.currency)||typeof r.amount!=='number'||!Number.isFinite(r.amount)||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||r.date.slice(0,7)!==data.period||!statementKinds.includes(r.kind)||typeof r.description!=='string'||typeof r.category!=='string'||typeof r.needs_review!=='boolean')throw Error('Neplatná alebo duplicitná transakcia.');
@@ -369,11 +389,13 @@ function importedAlready(r){return T.some(x=>x.importId===r.id||(r.bank_transact
 async function previewStatement(file){
  statementDraft=null;$('#statementPreview').textContent='';if(!file)return;
  try{
+  if(/\.pdf$/i.test(file.name||'')||file.type==='application/pdf')throw Error('Vybral si PDF. Použi spracovaný súbor transakcie-2026-08.json, ktorý si dostal samostatne.');
+  if(/\.zip$/i.test(file.name||''))throw Error('Vybral si ZIP aplikácie. Pre import vyber samostatný transakcie-2026-08.json.');
   if(file.size>10*1024*1024)throw Error('Súbor je príliš veľký.');
-  const data=validateStatement(JSON.parse(await file.text()));statementDraft=data;
+  const data=validateStatement(JSON.parse((await readFileText(file)).replace(/^\uFEFF/,'')));statementDraft=data;
   const fresh=data.transactions.filter(r=>!importedAlready(r)),duplicate=data.transactions.length-fresh.length;
   $('#statementPreview').innerHTML=`<div class="notice neutral">Obdobie ${esc(data.period)} · ${fresh.length} nových · ${duplicate} už importovaných · ${fresh.filter(r=>r.needs_review).length} na kontrolu. Nejasné prevody a hotovosť sa nezapočítajú do spotreby ani zárobku. Ručne zadané duplicity treba skontrolovať.</div><button class="primary" onclick="commitStatement()" ${fresh.length?'':'disabled'}>Pridať transakcie</button>`;
- }catch(e){$('#statementPreview').textContent=e.message||'Výpis sa nepodarilo načítať.'}
+ }catch(e){$('#statementPreview').textContent=e instanceof SyntaxError?'Súbor nemá platný obsah JSON. Vyber spracovaný výpis, nie PDF alebo ZIP.':e.message||'Výpis sa nepodarilo načítať.'}
 }
 function commitStatement(){
  if(!statementDraft)return;
@@ -383,7 +405,7 @@ function commitStatement(){
  // Write first so storage errors cannot leave an unsaved in-memory import.
  const merged=T.concat(additions);
  try{localStorage.setItem(TKEY,JSON.stringify(merged))}catch{alert('Transakcie sa nepodarilo uložiť. Exportuj zálohu a skontroluj voľné miesto.');return}
- T=merged;$('#reportMonth').value=statementDraft.period;statementDraft=null;$('#statementPreview').textContent=`Pridaných ${additions.length} transakcií.`;render();nav('txs');
+ T=merged;$('#reportMonth').value=statementDraft.period;localStorage.setItem('rg25_month',statementDraft.period);statementDraft=null;$('#statementPreview').textContent=`Pridaných ${additions.length} transakcií.`;render();nav('txs');
 }
 function renderImportCoverage(){
  const el=$('#importCoverage');if(!el)return;
@@ -406,7 +428,13 @@ function saveReview(){
  const x=T.find(t=>t.id===reviewId);if(!x)return;
  const kind=$('#reviewKind').value,category=$('#reviewCategory').value.trim();if(!category)return alert('Zadaj kategóriu.');
  if((kind==='income'&&x.signedAmount<0)||(kind==='expense'&&x.signedAmount>0))return alert('Typ pohybu nesedí so znamienkom sumy.');
- x.kind=kind;x.c=category;x.needsReview=kind==='unresolved';save();$('#reviewdlg').close();render();
+ const updated=T.map(t=>t.id===x.id?{...t,kind,c:category,needsReview:kind==='unresolved'}:t);try{localStorage.setItem(TKEY,JSON.stringify(updated))}catch{return alert('Zaradenie sa nepodarilo uložiť. Exportuj zálohu.')}T=updated;$('#reviewdlg').close();render();
 }
 
-save();render();
+// Confirmed correction: these four imported Revolut payments are not own transfers.
+const correctedRevolutIds=["slsp-202608-044", "slsp-202608-045", "slsp-202608-046", "slsp-202608-047"];
+const correctedT=T.map(x=>correctedRevolutIds.includes(x.importId)&&x.kind==='probable_own_transfer'?{...x,kind:'unresolved',c:'Platba inej osobe',otherAccount:null,needsReview:true,reviewReason:'Používateľ potvrdil: Revolut nie je jeho. Účel platby zatiaľ neznámy.'}:x);
+if(correctedT.some((x,i)=>x!==T[i])){try{localStorage.setItem(TKEY,JSON.stringify(correctedT));T=correctedT}catch{alert('Opravu zaradenia Revolut sa nepodarilo uložiť. Exportuj zálohu.')}}
+$('#reportMonth').value=localStorage.getItem('rg25_month')||today().slice(0,7);
+$('#reportMonth').addEventListener('change',()=>localStorage.setItem('rg25_month',$('#reportMonth').value));
+render();

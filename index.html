@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>RozpočetGuru 2.5</title>
-  <link rel="stylesheet" href="style.css">
+  <title>RozpočetGuru 2.5.1</title>
+  <link rel="stylesheet" href="style.css?v=2.5.1">
 </head>
 <body>
 <main class="shell">
   <header class="topbar">
-    <div><div class="eyebrow">OSOBNÉ FINANCIE</div><div class="brand">Rozpočet<span>Guru</span></div></div>
+    <div><div class="eyebrow">OSOBNÉ FINANCIE</div><div class="small muted">Verzia 2.5.1</div><div class="brand">Rozpočet<span>Guru</span></div></div>
     <button class="primary compact" onclick="openTx()">＋ Transakcia</button>
   </header>
 
@@ -52,13 +52,13 @@
     <div class="page-title"><div><div class="eyebrow">POHYBY</div><h1>Transakcie</h1></div><button class="primary compact" onclick="openTx()">＋ Pridať</button></div>
     <div class="card filters">
       <input id="search" class="input" placeholder="Hľadať transakciu">
-      <select id="typeFilter" class="input" onchange="render()"><option value="all">Všetky typy</option><option value="expense">Výdavky</option><option value="income">Príjmy</option><option value="transfer">Vlastné prevody</option><option value="capital">Vklady do investícií</option></select>
+      <select id="typeFilter" class="input" onchange="render()"><option value="all">Všetky typy</option><option value="review">Na kontrolu</option><option value="investments">Investičné pohyby</option><option value="other">Ostatné pohyby</option><option value="expense">Výdavky</option><option value="income">Príjmy</option><option value="transfer">Vlastné prevody</option><option value="capital">Vklady do investícií</option></select>
     </div>
-    <div id="txlist" class="card list"></div>
+    <div id="txPeriod" class="notice neutral small"></div><div id="txlist" class="card list"></div>
   </section>
 
   <section id="guru" class="page">
-    <div class="page-title"><div><div class="eyebrow">AI PORADCA</div><h1>Guru</h1></div></div>
+    <div class="page-title"><div><div class="eyebrow">PREHĽAD A PRAVIDLÁ</div><h1>Guru</h1></div></div>
     <div class="card guru-intro"><div class="orb">✦</div><div><strong>Finančný prehľad bez dvojitého počítania.</strong><p class="muted">Vlastné prevody a vklady do investícií nie sú bežná spotreba.</p></div></div>
     <div id="guruCards" class="two-grid"></div>
     <div class="card chat-card"><div id="answer" class="answer muted">Spýtaj sa na výdavky, rozpočet, ciele, Trading 212 alebo SLSP fondy.</div><div class="chat"><input id="q" class="input" placeholder="Napr. Ako som na tom vybrané obdobie?"><button class="primary" onclick="ask()">Odoslať</button></div></div>
@@ -100,8 +100,8 @@
       <label>Referenčný kurz CZK za 1 €</label><div class="inline"><input id="fx" class="input" type="number" step=".0001" placeholder="napr. 24.80"><button class="secondary" onclick="saveFx()">Uložiť</button></div>
       <div class="salary"><span class="muted small">Očakávaná čistá mzda</span><strong>≈ 45 000 Kč / mesiac</strong><span class="muted small">Raiffeisenbank CZK · iba informatívne</span></div>
     </div>
-    <div class="card settings"><h3>Bankové výpisy</h3><p class="muted small">Import spracovaných výpisov pridá transakcie a zachová existujúce dáta. Zostatky a portfólio sa nemenia. Pred importom odporúčame exportovať zálohu.</p><label class="secondary filebtn">Načítať spracovaný výpis<input type="file" accept="application/json" onchange="previewStatement(this.files[0]);this.value='' "></label><div id="statementPreview"></div></div>
-    <div class="card settings"><h3>Dáta a bezpečnosť</h3><div class="notice">Bankové prepojenie neskôr iba read-only. Heslo, PIN, CVV ani autorizačný kód sa do RozpočetGuru nezadávajú.</div><div class="two-grid"><button class="secondary" onclick="backup()">Exportovať</button><label class="secondary filebtn">Importovať<input id="importFile" type="file" accept="application/json" onchange="restore(this.files[0])"></label></div></div>
+    <div class="card settings"><h3>Bankové výpisy</h3><p class="muted small">Import spracovaných výpisov pridá transakcie a zachová existujúce dáta. Zostatky a portfólio sa nemenia. Pred importom odporúčame exportovať zálohu.</p><label for="statementFile">Vyber spracovaný výpis (.json)</label><input id="statementFile" class="input" type="file" onchange="previewStatement(this.files[0]);this.value=''" aria-describedby="importHelp"><p id="importHelp" class="small muted">Vyber transakcie-2026-08.json zo Stiahnutých súborov. PDF a ZIP tu zatiaľ nemožno načítať.</p><details><summary>Alternatíva: vložiť obsah JSON</summary><textarea id="statementText" class="input" rows="5" placeholder="Vlož celý obsah spracovaného JSON"></textarea><button class="secondary" onclick="previewStatementText()">Skontrolovať vložené údaje</button></details><div id="statementPreview"></div></div>
+    <div class="card settings"><h3>Dáta a bezpečnosť</h3><div class="notice">Bankové prepojenie neskôr iba read-only. Heslo, PIN, CVV ani autorizačný kód sa do RozpočetGuru nezadávajú.</div><div class="two-grid"><button class="secondary" onclick="backup()">Exportovať</button><div><label for="importFile">Obnoviť zálohu (.json)</label><input id="importFile" class="input" type="file" onchange="restore(this.files[0]);this.value=''"></div></div></div>
   </section>
 </main>
 
@@ -161,6 +161,6 @@
 </dialog>
 
 <dialog id="reviewdlg"><h2>Zaradenie transakcie</h2><div id="reviewDescription" class="notice neutral small"></div><label>Typ pohybu</label><select id="reviewKind" class="input"><option value="unresolved">Na kontrolu</option><option value="expense">Výdavok / spotreba</option><option value="income">Príjem / zárobok</option><option value="own_transfer">Vlastný prevod</option><option value="investment_outflow">Vklad do investícií</option><option value="investment_inflow">Výber / refundácia investícií</option><option value="cash_deposit">Vklad hotovosti</option><option value="cash_withdrawal">Výber hotovosti</option><option value="loan_principal">Splátka istiny</option><option value="refund">Refundácia</option><option value="own_fx_transfer">Vlastná menová konverzia</option></select><label>Kategória</label><input id="reviewCategory" class="input"><div class="actions"><button class="secondary" onclick="$('#reviewdlg').close()">Zrušiť</button><button class="primary" onclick="saveReview()">Potvrdiť zaradenie</button></div></dialog>
-<script src="app.js"></script>
+<script src="app.js?v=2.5.1"></script>
 </body>
 </html>
