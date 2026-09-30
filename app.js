@@ -1,78 +1,279 @@
-const KEY='rg2_transactions', GOALS_KEY='rg2_goals';
-const categories={
- expense:['Bývanie','Potraviny','Reštaurácie','Auto a doprava','Palivo','Poistenie','Zdravie','Telekom','Predplatné','Zábava','Oblečenie','Cestovanie','Nákupy','Vzdelanie','Splátky dlhu','Investície','Iné'],
- income:['Mzda','Bonus','Vedľajší príjem','Refundácia','Iné príjmy'],
- transfer:['Vlastný prevod']
-};
-const demo=[
- {id:1,n:'Mzda',a:1850,t:'income',c:'Mzda',d:'2026-09-15',note:''},
- {id:2,n:'Nájom a energie',a:620,t:'expense',c:'Bývanie',d:'2026-09-02',note:''},
- {id:3,n:'Potraviny',a:184,t:'expense',c:'Potraviny',d:'2026-09-08',note:''},
- {id:4,n:'Čerpacia stanica',a:78,t:'expense',c:'Palivo',d:'2026-09-12',note:''},
- {id:5,n:'Poistenie auta',a:50,t:'expense',c:'Poistenie',d:'2026-09-18',note:''},
- {id:6,n:'Reštaurácia',a:42,t:'expense',c:'Reštaurácie',d:'2026-09-22',note:''},
- {id:7,n:'Telefón',a:24,t:'expense',c:'Telekom',d:'2026-09-25',note:''},
- {id:8,n:'Presun na sporenie',a:300,t:'transfer',c:'Vlastný prevod',d:'2026-09-26',note:''}
+const TX_KEY='rg2_transactions';
+const ACC_KEY='rg21_accounts';
+const FX_KEY='rg21_fx';
+const INVEST_KEY='rg21_investments';
+
+const accountsDefault=[
+  {id:'rb_cz',name:'Raiffeisenbank',label:'CZ účet',currency:'CZK',balance:null,icon:'Kč'},
+  {id:'slsp_sk',name:'Slovenská sporiteľňa',label:'SK účet',currency:'EUR',balance:null,icon:'€'}
 ];
-const accounts=[{name:'Bežný účet',bank:'Hlavný účet',balance:2840,icon:'€'},{name:'Sporenie',bank:'Rezerva',balance:4350,icon:'↗'}];
-const budgets=[{c:'Potraviny',limit:300},{c:'Palivo',limit:160},{c:'Reštaurácie',limit:120},{c:'Telekom',limit:60}];
-const goals=[{name:'Finančná rezerva',current:2400,target:6000},{name:'Vlastné bývanie',current:5500,target:20000}];
-let tx=load(KEY,demo), editingId=null;
+const categories={
+  expense:['Bývanie','Potraviny','Reštaurácie','Auto a doprava','Palivo','Poistenie','Zdravie','Telekom','Predplatné','Zábava','Oblečenie','Cestovanie','Nákupy','Vzdelanie','Splátky dlhu','Investície','Iné'],
+  income:['Mzda','Bonus','Vedľajší príjem','Refundácia','Iné príjmy']
+};
+const goals=[{name:'Finančná rezerva',current:0,target:6000},{name:'Vlastné bývanie',current:0,target:20000}];
+
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const eur=n=>new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR'}).format(n);
-function load(k,f){try{return JSON.parse(localStorage.getItem(k))||structuredClone(f)}catch{return structuredClone(f)}}
-function save(){localStorage.setItem(KEY,JSON.stringify(tx))}
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function monthTx(){return tx}
-function totals(){const m=monthTx();return {i:m.filter(x=>x.t==='income').reduce((s,x)=>s+x.a,0),e:m.filter(x=>x.t==='expense').reduce((s,x)=>s+x.a,0)}}
-function iconFor(c){const m={'Bývanie':'⌂','Potraviny':'◒','Reštaurácie':'♨','Palivo':'⛽','Poistenie':'◇','Telekom':'◉','Mzda':'€','Vlastný prevod':'↔'};return m[c]||'•'}
-function txRow(x,actions=true){const sign=x.t==='income'?'+':x.t==='expense'?'−':'↔ '; const cls=x.t==='income'?'positive':x.t==='expense'?'negative':'muted';
- return `<div class="tx"><div class="tx-icon">${iconFor(x.c)}</div><div class="tx-main"><div class="tx-name">${esc(x.n)}</div><div class="tx-meta">${x.d} · ${esc(x.c)}</div></div><div class="tx-amt ${cls}">${sign}${eur(x.a)}${actions?`<div class="tx-actions"><button class="mini-btn" onclick="editTx(${x.id})">Upraviť</button><button class="mini-btn" onclick="removeTx(${x.id})">Zmazať</button></div>`:''}</div></div>`}
+const money=(n,c)=>new Intl.NumberFormat(c==='CZK'?'cs-CZ':'sk-SK',{style:'currency',currency:c,maximumFractionDigits:c==='CZK'?0:2}).format(n||0);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clone=o=>JSON.parse(JSON.stringify(o));
+
+function loadJSON(key,fallback){try{const v=JSON.parse(localStorage.getItem(key));return v??clone(fallback)}catch{return clone(fallback)}}
+let accounts=loadJSON(ACC_KEY,accountsDefault);
+let fx=Number(localStorage.getItem(FX_KEY))||null;
+let tx=loadJSON(TX_KEY,[]);
+let investments=loadJSON(INVEST_KEY,[]);
+let editingId=null, txType='expense', editingAccountId=null;
+
+function account(id){return accounts.find(a=>a.id===id)}
+function migrate(){
+  let changed=false;
+  tx=tx.map(x=>{
+    if(x.kind==='transfer' || x.t==='transfer'){
+      if(!x.kind){changed=true;return {id:x.id||Date.now(),kind:'transfer',n:x.n||'Vlastný prevod',d:x.d||today(),fromAccount:'rb_cz',toAccount:'slsp_sk',fromAmount:Number(x.a||0),toAmount:0,fee:0,note:x.note||''}}
+      return x;
+    }
+    if(!x.kind){
+      changed=true;
+      return {id:x.id||Date.now(),kind:x.t||'expense',n:x.n||'Transakcia',a:Number(x.a||0),d:x.d||today(),c:x.c||'Iné',accountId:'slsp_sk',currency:'EUR',note:x.note||''};
+    }
+    return x;
+  });
+  if(changed)saveTx();
+}
+function saveTx(){localStorage.setItem(TX_KEY,JSON.stringify(tx))}
+function saveAccounts(){localStorage.setItem(ACC_KEY,JSON.stringify(accounts))}
+function saveInvestments(){localStorage.setItem(INVEST_KEY,JSON.stringify(investments))}
+function today(){return new Date().toISOString().slice(0,10)}
+function thisMonth(x){return x.d?.slice(0,7)===today().slice(0,7)}
+
+function toEur(amount,currency){
+  if(currency==='EUR')return Number(amount)||0;
+  if(currency==='CZK'&&fx)return (Number(amount)||0)/fx;
+  return null;
+}
+function accountFlow(aid){
+  let income=0, expense=0;
+  tx.filter(thisMonth).forEach(x=>{
+    if(x.kind==='income'&&x.accountId===aid)income+=x.a;
+    if(x.kind==='expense'&&x.accountId===aid)expense+=x.a;
+  });
+  return {income,expense,flow:income-expense};
+}
+function totalsEur(){
+  let i=0,e=0,valid=true;
+  tx.filter(thisMonth).forEach(x=>{
+    if(x.kind!=='income'&&x.kind!=='expense')return;
+    const v=toEur(x.a,x.currency||account(x.accountId)?.currency);
+    if(v===null){valid=false;return}
+    if(x.kind==='income')i+=v; else e+=v;
+  });
+  return {i,e,flow:i-e,valid};
+}
+function netWorthEur(){
+  let sum=0,valid=true,hasAny=false;
+  accounts.forEach(a=>{
+    if(a.balance===null||a.balance==='')return;
+    hasAny=true;
+    const v=toEur(a.balance,a.currency);
+    if(v===null)valid=false; else sum+=v;
+  });
+  investments.forEach(inv=>{
+    if(inv.currentValue==null)return;
+    hasAny=true;
+    const v=toEur(inv.currentValue,inv.currency||'EUR');
+    if(v===null)valid=false; else sum+=v;
+  });
+  return {sum,valid,hasAny};
+}
+function effectiveRate(x){
+  const from=account(x.fromAccount),to=account(x.toAccount);
+  if(!from||!to||!x.fromAmount||!x.toAmount)return null;
+  if(from.currency==='CZK'&&to.currency==='EUR')return x.fromAmount/x.toAmount;
+  if(from.currency==='EUR'&&to.currency==='CZK')return x.toAmount/x.fromAmount;
+  return null;
+}
+function txCurrency(x){
+  if(x.kind==='transfer')return null;
+  return x.currency||account(x.accountId)?.currency||'EUR';
+}
+function txRow(x,actions=true){
+  if(x.kind==='transfer'){
+    const fa=account(x.fromAccount),ta=account(x.toAccount),rate=effectiveRate(x);
+    return `<div class="tx"><div class="tx-icon">↔</div><div class="tx-main"><div class="tx-name">${esc(x.n)}</div><div class="tx-meta">${x.d} · ${esc(fa?.name||'Účet')} → ${esc(ta?.name||'Účet')}${rate?` · ${rate.toFixed(3)} CZK/€`:''}</div></div><div class="tx-amt transfer-color">${money(x.fromAmount,fa?.currency||'EUR')} → ${money(x.toAmount,ta?.currency||'EUR')}${actions?actionsHtml(x.id):''}</div></div>`;
+  }
+  const a=account(x.accountId),currency=txCurrency(x),sign=x.kind==='income'?'+':'−',cls=x.kind==='income'?'positive':'negative';
+  return `<div class="tx"><div class="tx-icon">${x.kind==='income'?'€':'•'}</div><div class="tx-main"><div class="tx-name">${esc(x.n)}</div><div class="tx-meta">${x.d} · ${esc(x.c)} · ${esc(a?.name||'Účet')}</div></div><div class="tx-amt ${cls}">${sign}${money(x.a,currency)}${actions?actionsHtml(x.id):''}</div></div>`;
+}
+function actionsHtml(id){return `<div class="tx-actions"><button class="mini-btn" onclick="editTx(${id})">Upraviť</button><button class="mini-btn" onclick="removeTx(${id})">Zmazať</button></div>`}
+
 function render(){
- const {i,e}=totals(), flow=i-e, rate=i?Math.round(flow/i*100):0;
- $('#income').textContent=eur(i); $('#expenses').textContent=eur(e); $('#cashflow').textContent=eur(flow); $('#savingRate').textContent=`${rate} %`;
- $('#cashStatus').textContent=flow>=0?'Kladný':'Záporný'; $('#cashStatus').style.background=flow>=0?'#143425':'#3a1922'; $('#cashStatus').style.color=flow>=0?'#79e8b8':'#ff9eaa';
- $('#accounts').innerHTML=accounts.map(a=>`<div class="account"><div class="icon">${a.icon}</div><span class="muted small">${a.bank}</span><strong>${eur(a.balance)}</strong><span>${a.name}</span></div>`).join('');
- const sorted=[...tx].sort((a,b)=>b.d.localeCompare(a.d)||b.id-a.id);
- $('#recent').innerHTML=sorted.slice(0,4).map(x=>txRow(x,false)).join('')||'<div class="muted">Žiadne transakcie.</div>';
- renderTransactions(sorted); renderBudgets(); renderGoals(); renderInsight(i,e,rate); renderGuru(i,e,rate); drawChart();
+  const n=netWorthEur(),t=totalsEur();
+  $('#netWorth').textContent=n.hasAny&&n.valid?eur(n.sum):'—';
+  $('#netWorthHint').textContent=!n.hasAny?'Zadaj aktuálne zostatky účtov.':(!n.valid?'Nastav referenčný kurz CZK / EUR.':'Bankové účty + neskôr investície.');
+  $('#incomeEur').textContent=t.valid?eur(t.i):'—';
+  $('#expenseEur').textContent=t.valid?eur(t.e):'—';
+  $('#flowEur').textContent=t.valid?eur(t.flow):'—';
+  $('#flowEur').className=t.valid?(t.flow>=0?'positive':'negative'):'';
+
+  $('#accounts').innerHTML=accounts.map(a=>`<div class="account"><div class="icon">${a.icon}</div><span class="muted small">${esc(a.label)}</span><strong>${a.balance===null?'—':money(a.balance,a.currency)}</strong><span>${esc(a.name)}</span><span class="currency-badge">${a.currency}</span></div>`).join('');
+
+  $('#accountMonth').innerHTML=accounts.map(a=>{const f=accountFlow(a.id);return `<div class="account-month-row"><div><strong>${esc(a.name)}</strong><div class="muted small">${a.currency}</div></div><div class="nums"><div class="positive">+${money(f.income,a.currency)}</div><div class="negative">−${money(f.expense,a.currency)}</div></div></div>`}).join('');
+
+  const sorted=[...tx].sort((a,b)=>(b.d||'').localeCompare(a.d||'')||(b.id||0)-(a.id||0));
+  $('#recent').innerHTML=sorted.slice(0,5).map(x=>txRow(x,false)).join('')||'<div class="muted">Zatiaľ žiadne transakcie.</div>';
+  renderTransactions(sorted);
+  renderProfile();
+  renderGoals();
+  renderGuru();
+  drawChart();
 }
 function renderTransactions(sorted){
- const q=($('#search')?.value||'').toLowerCase(), tf=$('#typeFilter')?.value||'all';
- const rows=sorted.filter(x=>(tf==='all'||x.t===tf)&&(`${x.n} ${x.c} ${x.note||''}`).toLowerCase().includes(q));
- $('#allTransactions').innerHTML=rows.map(x=>txRow(x,true)).join('')||'<div class="muted">Nič som nenašiel.</div>';
+  const q=($('#search').value||'').toLowerCase(),tf=$('#typeFilter').value,af=$('#accountFilter').value;
+  const rows=sorted.filter(x=>{
+    const typeOk=tf==='all'||x.kind===tf;
+    const accOk=af==='all'||(x.kind==='transfer'?(x.fromAccount===af||x.toAccount===af):x.accountId===af);
+    const text=`${x.n||''} ${x.c||''} ${x.note||''}`.toLowerCase();
+    return typeOk&&accOk&&text.includes(q);
+  });
+  $('#allTransactions').innerHTML=rows.map(x=>txRow(x,true)).join('')||'<div class="muted">Nič som nenašiel.</div>';
 }
-function catSpent(c){return tx.filter(x=>x.t==='expense'&&x.c===c).reduce((s,x)=>s+x.a,0)}
-function budgetHTML(b){const spent=catSpent(b.c), pct=Math.min(100,Math.round(spent/b.limit*100)), cls=pct>=100?'over':pct>=80?'warn':'';return `<div class="card budget-card"><div class="budget-row"><strong>${b.c}</strong><span>${eur(spent)} / ${eur(b.limit)}</span></div><div class="bar"><div class="fill ${cls}" style="width:${pct}%"></div></div><div class="small muted" style="margin-top:7px">${Math.max(0,b.limit-spent).toFixed(0)} € zostáva</div></div>`}
-function renderBudgets(){ $('#budgetPreview').innerHTML=budgets.slice(0,2).map(budgetHTML).join(''); $('#budgetsList').innerHTML=budgets.map(budgetHTML).join('') }
-function renderGoals(){ $('#goalsList').innerHTML=goals.map(g=>{const p=Math.min(100,Math.round(g.current/g.target*100));return `<div class="card budget-card"><div class="budget-row"><strong>${g.name}</strong><span>${p} %</span></div><p class="muted">${eur(g.current)} z ${eur(g.target)}</p><div class="bar"><div class="fill" style="width:${p}%"></div></div></div>`}).join('') }
-function topCategory(){const m={};tx.filter(x=>x.t==='expense').forEach(x=>m[x.c]=(m[x.c]||0)+x.a);return Object.entries(m).sort((a,b)=>b[1]-a[1])[0]||['—',0]}
-function renderInsight(i,e,rate){const [c,v]=topCategory(); $('#homeInsight').innerHTML=`<div class="eyebrow" style="color:#74e2b1">✦ POSTREH</div><strong>${i>=e?'Cash-flow je kladný.':'Výdavky sú vyššie než príjem.'}</strong><div class="muted">Miera úspory je ${rate} %. Najväčšia kategória výdavkov: ${esc(c)} (${eur(v)}).</div>`}
-function renderGuru(i,e,rate){const [c,v]=topCategory(); $('#guruInsights').innerHTML=`<div class="insight"><span class="muted small">Miera úspory</span><strong>${rate} %</strong></div><div class="insight"><span class="muted small">Najväčší výdavok</span><strong>${esc(c)}</strong></div><div class="insight"><span class="muted small">Cash-flow</span><strong class="${i-e>=0?'positive':'negative'}">${eur(i-e)}</strong></div><div class="insight"><span class="muted small">Výdavky spolu</span><strong>${eur(e)}</strong></div>`}
+function renderProfile(){
+  $('#accountSettings').innerHTML=accounts.map(a=>`<div class="account-setting"><div><strong>${esc(a.name)}</strong><div class="muted small">${esc(a.label)} · ${a.currency}</div></div><div style="text-align:right"><div class="balance">${a.balance===null?'Nezadané':money(a.balance,a.currency)}</div><button class="mini-btn" onclick="editAccount('${a.id}')">Upraviť</button></div></div>`).join('');
+  $('#fxRate').value=fx||'';
+  $('#accountFilter').innerHTML='<option value="all">Všetky účty</option>'+accounts.map(a=>`<option value="${a.id}">${esc(a.name)} (${a.currency})</option>`).join('');
+}
+function renderGoals(){
+  $('#goalsList').innerHTML=goals.map(g=>`<div class="card settings-card"><strong>${esc(g.name)}</strong><p class="muted">Cieľ ${eur(g.target)} · priebeh zatiaľ nezadaný</p><div class="bar"><div class="fill" style="width:0%"></div></div></div>`).join('');
+}
+function topExpenseEur(){
+  const m={}; let valid=true;
+  tx.filter(x=>thisMonth(x)&&x.kind==='expense').forEach(x=>{const v=toEur(x.a,txCurrency(x));if(v===null){valid=false;return}m[x.c]=(m[x.c]||0)+v});
+  const top=Object.entries(m).sort((a,b)=>b[1]-a[1])[0];
+  return {top,valid};
+}
+function renderGuru(){
+  const t=totalsEur(),top=topExpenseEur(),rb=accountFlow('rb_cz'),sk=accountFlow('slsp_sk');
+  $('#guruInsights').innerHTML=`<div class="insight"><span class="muted small">Raiffeisenbank príjem</span><strong>${money(rb.income,'CZK')}</strong></div><div class="insight"><span class="muted small">SLSP výdavky</span><strong>${money(sk.expense,'EUR')}</strong></div><div class="insight"><span class="muted small">Vlastné prevody</span><strong>${tx.filter(x=>thisMonth(x)&&x.kind==='transfer').length}</strong></div><div class="insight"><span class="muted small">Súhrnný cash-flow</span><strong>${t.valid?eur(t.flow):'Nastav kurz'}</strong></div>`;
+  let title='Dvojité započítanie prevodov sme odstránili.';
+  let body='Presun CZK z Raiffeisenbank do SLSP sa eviduje ako vlastný prevod a neovplyvní príjem ani výdavky.';
+  if(top.top&&top.valid)body+=` Najväčšia výdavková kategória je ${top.top[0]} (${eur(top.top[1])}).`;
+  $('#homeInsight').innerHTML=`<div class="eyebrow" style="color:#74e2b1">✦ POSTREH</div><strong>${title}</strong><div class="muted">${body}</div>`;
+}
 function drawChart(){
- const days=Number($('#periodSelect').value||30), sorted=[...tx].filter(x=>x.t!=='transfer').sort((a,b)=>a.d.localeCompare(b.d)).slice(-days);
- const points=sorted.map((x,idx)=>({x:idx,y:x.t==='income'?x.a:-x.a,t:x.t,d:x.d}));
- if(!points.length){$('#chart').innerHTML='<div class="muted">Pridaj transakciu.</div>';return}
- const W=560,H=190,P=22,max=Math.max(1,...points.map(p=>Math.abs(p.y))), zero=H/2;
- const sx=i=>points.length===1?W/2:P+i*(W-2*P)/(points.length-1), sy=v=>zero-(v/max)*(zero-25);
- let grid=`<line x1="${P}" y1="${zero}" x2="${W-P}" y2="${zero}" stroke="#2b3b53" stroke-width="1"/>`;
- let circles=points.map((p,i)=>`<circle cx="${sx(i)}" cy="${sy(p.y)}" r="5" fill="${p.t==='income'?'#70e3b0':'#ff7e8e'}"><title>${p.d}: ${eur(p.y)}</title></circle>`).join('');
- let stems=points.map((p,i)=>`<line x1="${sx(i)}" y1="${zero}" x2="${sx(i)}" y2="${sy(p.y)}" stroke="${p.t==='income'?'#70e3b0':'#ff7e8e'}" stroke-width="5" stroke-linecap="round" opacity=".8"/>`).join('');
- $('#chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}${stems}${circles}</svg>`;
+  const limit=Number($('#periodSelect').value||30);
+  const rows=[...tx].filter(x=>x.d).sort((a,b)=>a.d.localeCompare(b.d)).slice(-limit);
+  if(!rows.length){$('#chart').innerHTML='<div class="muted">Pridaj prvú transakciu.</div>';return}
+  const vals=rows.map(x=>{
+    if(x.kind==='transfer')return {v:0,type:'transfer',label:'prevod'};
+    const v=toEur(x.a,txCurrency(x));
+    return {v:v===null?0:(x.kind==='income'?v:-v),type:x.kind,label:x.n};
+  });
+  const W=560,H=190,P=22,zero=H/2,max=Math.max(1,...vals.map(p=>Math.abs(p.v)));
+  const sx=i=>rows.length===1?W/2:P+i*(W-2*P)/(rows.length-1),sy=v=>zero-(v/max)*(zero-25);
+  const stems=vals.map((p,i)=>{const color=p.type==='income'?'#70e3b0':p.type==='expense'?'#ff7e8e':'#73b8ff';const y=p.type==='transfer'?zero-5:sy(p.v);return `<line x1="${sx(i)}" y1="${zero}" x2="${sx(i)}" y2="${y}" stroke="${color}" stroke-width="5" stroke-linecap="round" opacity=".85"/><circle cx="${sx(i)}" cy="${y}" r="5" fill="${color}"><title>${esc(rows[i].d)} · ${esc(p.label)}</title></circle>`}).join('');
+  $('#chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="${P}" y1="${zero}" x2="${W-P}" y2="${zero}" stroke="#2b3b53" stroke-width="1"/>${stems}</svg>`;
 }
-function nav(page){$$('.page').forEach(p=>p.classList.remove('active')); $('#'+page).classList.add('active'); $$('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page)); scrollTo(0,0)}
-function fillCategories(type,selected=''){const sel=$('#txCategory');sel.innerHTML=categories[type].map(c=>`<option ${c===selected?'selected':''}>${c}</option>`).join('')}
-function openModal(id=null){editingId=id; const x=id?tx.find(t=>t.id===id):null; $('#modalTitle').textContent=x?'Upraviť transakciu':'Nová transakcia'; $('#txName').value=x?.n||''; $('#txAmount').value=x?.a||''; $('#txDate').value=x?.d||new Date().toISOString().slice(0,10); $('#txType').value=x?.t||'expense'; fillCategories($('#txType').value,x?.c||''); $('#txNote').value=x?.note||''; $('#txModal').classList.add('open')}
-function closeModal(){editingId=null;$('#txModal').classList.remove('open')}
-function saveTx(){const n=$('#txName').value.trim(),a=Math.abs(Number($('#txAmount').value)),d=$('#txDate').value,t=$('#txType').value,c=$('#txCategory').value,note=$('#txNote').value.trim();if(!n||!a||!d)return alert('Vyplň názov, sumu a dátum.'); if(editingId){const x=tx.find(x=>x.id===editingId);Object.assign(x,{n,a,d,t,c,note})}else tx.push({id:Date.now(),n,a,d,t,c,note}); save();closeModal();render()}
-window.editTx=id=>openModal(id); window.removeTx=id=>{if(confirm('Vymazať túto transakciu?')){tx=tx.filter(x=>x.id!==id);save();render()}};
-function guruReply(q){const {i,e}=totals(),[c,v]=topCategory(),rate=i?Math.round((i-e)/i*100):0,s=q.toLowerCase();if(/najviac|kateg/.test(s))return `Najviac ide do kategórie ${c}: ${eur(v)}.`;if(/ušet|uspor|úspor/.test(s))return `Aktuálna miera úspory je ${rate} %. Z príjmu po evidovaných výdavkoch zostáva ${eur(i-e)}.`;if(/minul|výdav/.test(s))return `Evidované výdavky sú ${eur(e)}. Vlastné prevody do nich nerátam.`;if(/príjem|zarob/.test(s))return `Evidovaný príjem je ${eur(i)}.`;return `Z tvojich lokálnych dát vidím príjem ${eur(i)}, výdavky ${eur(e)} a cash-flow ${eur(i-e)}. Skús sa opýtať na najväčšiu kategóriu alebo mieru úspory.`}
-function sendGuru(){const inp=$('#guruInput'),q=inp.value.trim();if(!q)return; $('#chat').innerHTML+=`<div class="bubble me">${esc(q)}</div><div class="bubble">${esc(guruReply(q))}</div>`;inp.value=''}
-function exportData(){const blob=new Blob([JSON.stringify({version:'2.0',transactions:tx,goals},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rozpocetguru-backup.json';a.click();URL.revokeObjectURL(a.href)}
-function importData(file){const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.transactions))throw 0;tx=d.transactions;save();render();alert('Dáta boli importované.')}catch{alert('Neplatný záložný súbor.')}};r.readAsText(file)}
+function nav(page){$$('.page').forEach(p=>p.classList.remove('active'));$('#'+page).classList.add('active');$$('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));scrollTo(0,0)}
+function setType(type){
+  txType=type; $$('#typeSwitch button').forEach(b=>b.classList.toggle('active',b.dataset.type===type));
+  $('#normalFields').classList.toggle('hidden',type==='transfer'); $('#transferFields').classList.toggle('hidden',type!=='transfer');
+  if(type!=='transfer')fillNormalFields();
+}
+function fillNormalFields(selectedCat=''){
+  $('#txAccount').innerHTML=accounts.map(a=>`<option value="${a.id}">${esc(a.name)} · ${a.currency}</option>`).join('');
+  const list=categories[txType]||categories.expense;
+  $('#txCategory').innerHTML=list.map(c=>`<option ${c===selectedCat?'selected':''}>${c}</option>`).join('');
+}
+function fillTransferAccounts(from='rb_cz',to='slsp_sk'){
+  $('#trFrom').innerHTML=accounts.map(a=>`<option value="${a.id}" ${a.id===from?'selected':''}>Z: ${esc(a.name)} · ${a.currency}</option>`).join('');
+  $('#trTo').innerHTML=accounts.map(a=>`<option value="${a.id}" ${a.id===to?'selected':''}>Na: ${esc(a.name)} · ${a.currency}</option>`).join('');
+  updateTransferLabels();
+}
+function updateTransferLabels(){
+  const f=account($('#trFrom').value),t=account($('#trTo').value);
+  $('#fromLabel').textContent=`Odoslané (${f?.currency||''})`; $('#toLabel').textContent=`Prijaté (${t?.currency||''})`; updateRatePreview();
+}
+function updateRatePreview(){
+  const f=account($('#trFrom').value),t=account($('#trTo').value),fa=Number($('#trFromAmount').value),ta=Number($('#trToAmount').value);
+  let text='Efektívny kurz sa vypočíta po zadaní oboch súm.';
+  if(f&&t&&fa>0&&ta>0){
+    if(f.currency==='CZK'&&t.currency==='EUR')text=`Efektívny kurz: ${(fa/ta).toFixed(3)} CZK za 1 €`;
+    else if(f.currency==='EUR'&&t.currency==='CZK')text=`Efektívny kurz: ${(ta/fa).toFixed(3)} CZK za 1 €`;
+    else text='Prevod je v rovnakej mene.';
+  }
+  $('#ratePreview').textContent=text;
+}
+function openModal(id=null){
+  editingId=id; const x=id?tx.find(t=>t.id===id):null; $('#modalTitle').textContent=x?'Upraviť transakciu':'Nová transakcia';
+  const type=x?.kind||'expense'; setType(type);
+  if(type==='transfer'){
+    fillTransferAccounts(x?.fromAccount||'rb_cz',x?.toAccount||'slsp_sk');
+    $('#trName').value=x?.n||'Prevod medzi vlastnými účtami'; $('#trFromAmount').value=x?.fromAmount||''; $('#trToAmount').value=x?.toAmount||''; $('#trFee').value=x?.fee||''; $('#trDate').value=x?.d||today(); updateRatePreview();
+  }else{
+    fillNormalFields(x?.c||'');
+    $('#txName').value=x?.n||''; $('#txAmount').value=x?.a||''; $('#txDate').value=x?.d||today(); $('#txAccount').value=x?.accountId||accounts[0].id; $('#txNote').value=x?.note||'';
+  }
+  $('#txModal').classList.add('open');
+}
+function closeModal(){$('#txModal').classList.remove('open');editingId=null}
+function saveCurrentTx(){
+  if(txType==='transfer'){
+    const fromAccount=$('#trFrom').value,toAccount=$('#trTo').value,fromAmount=Math.abs(Number($('#trFromAmount').value)),toAmount=Math.abs(Number($('#trToAmount').value)),fee=Math.abs(Number($('#trFee').value||0)),d=$('#trDate').value,n=$('#trName').value.trim()||'Vlastný prevod';
+    if(fromAccount===toAccount)return alert('Vyber dva rozdielne účty.');
+    if(!fromAmount||!toAmount||!d)return alert('Zadaj odoslanú sumu, prijatú sumu a dátum.');
+    const obj={id:editingId||Date.now(),kind:'transfer',n,d,fromAccount,toAccount,fromAmount,toAmount,fee,note:''};
+    if(editingId)tx[tx.findIndex(x=>x.id===editingId)]=obj; else tx.push(obj);
+  }else{
+    const n=$('#txName').value.trim(),a=Math.abs(Number($('#txAmount').value)),d=$('#txDate').value,accountId=$('#txAccount').value,c=$('#txCategory').value,note=$('#txNote').value.trim(),currency=account(accountId)?.currency||'EUR';
+    if(!n||!a||!d)return alert('Vyplň názov, sumu a dátum.');
+    const obj={id:editingId||Date.now(),kind:txType,n,a,d,c,accountId,currency,note};
+    if(editingId)tx[tx.findIndex(x=>x.id===editingId)]=obj; else tx.push(obj);
+  }
+  saveTx();closeModal();render();
+}
+window.editTx=id=>openModal(id);
+window.removeTx=id=>{if(confirm('Vymazať túto transakciu?')){tx=tx.filter(x=>x.id!==id);saveTx();render()}};
+
+window.editAccount=id=>{
+  editingAccountId=id; const a=account(id); $('#accountModalTitle').textContent=`${a.name} · ${a.currency}`; $('#accountBalance').value=a.balance??''; $('#accountModal').classList.add('open');
+}
+function closeAccountModal(){$('#accountModal').classList.remove('open');editingAccountId=null}
+function saveAccountBalance(){
+  const a=account(editingAccountId),v=$('#accountBalance').value;
+  if(!a)return;
+  a.balance=v===''?null:Number(v); saveAccounts(); closeAccountModal(); render();
+}
+function guruReply(q){
+  const s=q.toLowerCase(),t=totalsEur(),rb=accountFlow('rb_cz'),sk=accountFlow('slsp_sk'),transfers=tx.filter(x=>thisMonth(x)&&x.kind==='transfer');
+  if(/slsp|sporiteľ/.test(s))return `Na SLSP evidujem tento mesiac príjem ${money(sk.income,'EUR')} a výdavky ${money(sk.expense,'EUR')}. Vlastné prevody sa do príjmu nerátajú.`;
+  if(/raiff|česk|czk|mzda/.test(s))return `Na Raiffeisenbank evidujem tento mesiac príjem ${money(rb.income,'CZK')} a výdavky ${money(rb.expense,'CZK')}. Očakávaná mzda je približne 45 000 Kč, ale ako transakciu počítam iba to, čo zadáš.`;
+  if(/prevod|kurz/.test(s))return transfers.length?`Tento mesiac evidujem ${transfers.length} vlastný/é prevod/y. Pri prevode CZK → EUR používam skutočne odoslanú a prijatú sumu, takže vieme vypočítať efektívny kurz.`:'Tento mesiac zatiaľ nemáš uložený vlastný prevod.';
+  if(/spolu|cash|výdav|príjem/.test(s))return t.valid?`Po prepočte referenčným kurzom: príjem ${eur(t.i)}, výdavky ${eur(t.e)}, cash-flow ${eur(t.flow)}.`:'Na spoločný prepočet EUR ešte nastav referenčný kurz CZK / EUR v Profile.';
+  return 'Môžeš sa ma pýtať na Raiffeisenbank, SLSP, vlastné prevody, kurz alebo mesačný cash-flow.';
+}
+function sendGuru(){const inp=$('#guruInput'),q=inp.value.trim();if(!q)return;$('#chat').innerHTML+=`<div class="bubble me">${esc(q)}</div><div class="bubble">${esc(guruReply(q))}</div>`;inp.value=''}
+function exportData(){
+  const payload={version:'2.1',accounts,fxRateCZKPerEUR:fx,transactions:tx,investments,expectedSalaryCZK:45000};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rozpocetguru-2.1-backup.json';a.click();URL.revokeObjectURL(a.href);
+}
+function importData(file){
+  const r=new FileReader(); r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.transactions))throw new Error();tx=d.transactions;if(Array.isArray(d.accounts))accounts=d.accounts;if(d.fxRateCZKPerEUR)fx=Number(d.fxRateCZKPerEUR);if(Array.isArray(d.investments))investments=d.investments;saveTx();saveAccounts();saveInvestments();if(fx)localStorage.setItem(FX_KEY,String(fx));render();alert('Dáta boli importované.')}catch{alert('Neplatný záložný súbor.')}};r.readAsText(file)
+}
+
 $$('[data-page]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.page)));
-$('#addTxTop').onclick=$('#addTxPage').onclick=()=>openModal(); $('#closeModal').onclick=$('#cancelModal').onclick=closeModal; $('#saveTx').onclick=saveTx;
-$('#txType').onchange=()=>fillCategories($('#txType').value); $('#search').oninput=render; $('#typeFilter').onchange=render; $('#periodSelect').onchange=drawChart;
+$('#addTxTop').onclick=$('#addTxPage').onclick=()=>openModal();
+$('#closeModal').onclick=$('#cancelModal').onclick=closeModal;
+$('#saveTx').onclick=saveCurrentTx;
+$$('#typeSwitch button').forEach(b=>b.onclick=()=>setType(b.dataset.type));
+$('#trFrom').onchange=$('#trTo').onchange=updateTransferLabels;
+$('#trFromAmount').oninput=$('#trToAmount').oninput=updateRatePreview;
+$('#search').oninput=render; $('#typeFilter').onchange=render; $('#accountFilter').onchange=render; $('#periodSelect').onchange=drawChart;
 $('#sendGuru').onclick=sendGuru; $('#guruInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendGuru()});
-$('#exportBtn').onclick=exportData; $('#importInput').onchange=e=>e.target.files[0]&&importData(e.target.files[0]); $('#resetBtn').onclick=()=>{if(confirm('Obnoviť demo dáta?')){tx=structuredClone(demo);save();render()}};
-fillCategories('expense'); render();
+$('#saveFx').onclick=()=>{const v=Number($('#fxRate').value);if(!v||v<=0)return alert('Zadaj platný kurz CZK / EUR.');fx=v;localStorage.setItem(FX_KEY,String(v));render()};
+$('#closeAccountModal').onclick=$('#cancelAccount').onclick=closeAccountModal; $('#saveAccount').onclick=saveAccountBalance;
+$('#exportBtn').onclick=exportData; $('#importInput').onchange=e=>e.target.files[0]&&importData(e.target.files[0]);
+$('#resetBtn').onclick=()=>{if(confirm('Naozaj vymazať všetky lokálne transakcie? Zostatky účtov ostanú zachované.')){tx=[];saveTx();render()}};
+
+migrate(); fillNormalFields(); fillTransferAccounts(); render();

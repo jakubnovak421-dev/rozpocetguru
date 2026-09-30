@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>RozpočetGuru 2.0</title>
+  <title>RozpočetGuru 2.1</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,26 +22,33 @@
         <div class="hero">
           <div class="hero-top">
             <div>
-              <div class="muted">Čistý mesačný cash-flow</div>
-              <div class="hero-value" id="cashflow">0 €</div>
+              <div class="muted">Celkový majetok</div>
+              <div class="hero-value" id="netWorth">—</div>
+              <div class="small muted" id="netWorthHint">Nastav zostatky a referenčný kurz.</div>
             </div>
-            <span class="status" id="cashStatus">—</span>
+            <span class="status">EUR základ</span>
           </div>
           <div class="hero-grid">
-            <div><span>Príjem</span><strong class="positive" id="income">0 €</strong></div>
-            <div><span>Výdavky</span><strong class="negative" id="expenses">0 €</strong></div>
-            <div><span>Miera úspory</span><strong id="savingRate">0 %</strong></div>
+            <div><span>Mesačný príjem</span><strong class="positive" id="incomeEur">—</strong></div>
+            <div><span>Mesačné výdavky</span><strong class="negative" id="expenseEur">—</strong></div>
+            <div><span>Cash-flow</span><strong id="flowEur">—</strong></div>
           </div>
         </div>
 
         <div class="section-head">
-          <h2>Prehľad účtov</h2>
-          <span class="muted small">demo</span>
+          <h2>Účty</h2>
+          <button class="linkbtn" data-page="profile">Upraviť</button>
         </div>
         <div class="account-strip" id="accounts"></div>
 
         <div class="section-head">
-          <h2>Vývoj cash-flow</h2>
+          <h2>Tento mesiac podľa účtu</h2>
+          <span class="muted small">v pôvodnej mene</span>
+        </div>
+        <div class="card" id="accountMonth"></div>
+
+        <div class="section-head">
+          <h2>Cash-flow</h2>
           <select id="periodSelect" class="mini-select">
             <option value="7">7 dní</option>
             <option value="14">14 dní</option>
@@ -50,14 +57,12 @@
         </div>
         <div class="card chart-card">
           <div id="chart" class="chart"></div>
-          <div class="legend"><span><i class="dot in"></i> príjem</span><span><i class="dot out"></i> výdavok</span></div>
+          <div class="legend">
+            <span><i class="dot in"></i> príjem</span>
+            <span><i class="dot out"></i> výdavok</span>
+            <span><i class="dot transfer"></i> vlastný prevod</span>
+          </div>
         </div>
-
-        <div class="section-head">
-          <h2>Rozpočty</h2>
-          <button class="linkbtn" data-page="budgets">Zobraziť všetky</button>
-        </div>
-        <div id="budgetPreview"></div>
 
         <div class="section-head"><h2>Guru radí</h2></div>
         <button class="guru-card" data-page="guru" id="homeInsight"></button>
@@ -79,6 +84,9 @@
             <option value="income">Príjmy</option>
             <option value="transfer">Vlastné prevody</option>
           </select>
+          <select id="accountFilter" class="input">
+            <option value="all">Všetky účty</option>
+          </select>
         </div>
         <div class="card tx-list" id="allTransactions"></div>
       </section>
@@ -88,23 +96,18 @@
         <div class="guru-hero card">
           <div class="guru-orb">✦</div>
           <div>
-            <strong>Finančný prehľad bez súdenia.</strong>
-            <p class="muted">Guru vychádza iba z údajov uložených v tejto aplikácii.</p>
+            <strong>Dve meny, jeden reálny obraz.</strong>
+            <p class="muted">Vlastné prevody medzi CZK a EUR sa nepočítajú ako príjem ani výdavok.</p>
           </div>
         </div>
         <div class="insight-grid" id="guruInsights"></div>
         <div class="card chat-card">
           <div id="chat"></div>
           <div class="chat-row">
-            <input id="guruInput" class="input" placeholder="Napr. Na čom míňam najviac?">
+            <input id="guruInput" class="input" placeholder="Napr. Koľko som minul na SLSP?">
             <button class="primary" id="sendGuru">Odoslať</button>
           </div>
         </div>
-      </section>
-
-      <section class="page" id="budgets">
-        <div class="page-title"><div><div class="eyebrow">LIMITY</div><h1>Rozpočty</h1></div></div>
-        <div id="budgetsList"></div>
       </section>
 
       <section class="page" id="goals">
@@ -114,14 +117,46 @@
 
       <section class="page" id="profile">
         <div class="page-title"><div><div class="eyebrow">NASTAVENIA</div><h1>Profil</h1></div></div>
+
         <div class="card settings-card">
-          <strong>RozpočetGuru 2.0</strong>
-          <p class="muted">Transakcie sa zatiaľ ukladajú lokálne v tomto zariadení.</p>
-          <div class="notice">Budúce bankové prepojenie bude iba read-only. PIN, CVV, heslo ani autorizačný kód sa do aplikácie nikdy nezadávajú.</div>
+          <div class="setting-head">
+            <div>
+              <strong>Účty a meny</strong>
+              <p class="muted small">Zostatky sa zatiaľ zadávajú manuálne.</p>
+            </div>
+          </div>
+          <div id="accountSettings"></div>
+
+          <div class="fx-box">
+            <label for="fxRate"><strong>Referenčný kurz CZK / EUR</strong></label>
+            <p class="muted small">Koľko CZK predstavuje 1 €. Používa sa iba na súhrnný prepočet majetku a štatistík.</p>
+            <div class="fx-row">
+              <input id="fxRate" class="input" type="number" min="0" step="0.0001" placeholder="napr. 24.80">
+              <button class="secondary" id="saveFx">Uložiť kurz</button>
+            </div>
+          </div>
+
+          <div class="salary-box">
+            <span class="muted small">Očakávaná čistá mzda</span>
+            <strong>≈ 45 000 Kč / mesiac</strong>
+            <span class="muted small">Raiffeisenbank CZK · informatívne, nie je to automatická transakcia</span>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <strong>Investície</strong>
+          <p class="muted">Dátová štruktúra je pripravená. Manuálne investičné portfólio pridáme v ďalšej fáze bez miešania s bežnými výdavkami.</p>
+          <div class="notice neutral">Vklad k brokerovi bude evidovaný ako presun kapitálu, nie ako bežná spotreba.</div>
+        </div>
+
+        <div class="card settings-card">
+          <strong>Dáta a bezpečnosť</strong>
+          <p class="muted">Transakcie sa stále ukladajú lokálne v tomto zariadení.</p>
+          <div class="notice">Budúce bankové prepojenie bude iba read-only. PIN, CVV, heslo ani autorizačný kód sa do RozpočetGuru nikdy nezadávajú.</div>
           <div class="button-grid">
             <button class="secondary" id="exportBtn">Exportovať dáta</button>
             <label class="secondary file-label">Importovať dáta<input type="file" id="importInput" accept="application/json"></label>
-            <button class="danger" id="resetBtn">Obnoviť demo dáta</button>
+            <button class="danger" id="resetBtn">Vymazať lokálne transakcie</button>
           </div>
         </div>
       </section>
@@ -142,23 +177,66 @@
         <div><div class="eyebrow">TRANSAKCIA</div><h2 id="modalTitle">Nová transakcia</h2></div>
         <button class="iconbtn" id="closeModal">×</button>
       </div>
-      <input id="txName" class="input" placeholder="Názov / obchodník">
-      <div class="two">
-        <input id="txAmount" class="input" type="number" min="0" step="0.01" placeholder="Suma €">
-        <input id="txDate" class="input" type="date">
+
+      <div class="type-switch" id="typeSwitch">
+        <button data-type="expense" class="active">Výdavok</button>
+        <button data-type="income">Príjem</button>
+        <button data-type="transfer">Vlastný prevod</button>
       </div>
-      <div class="two">
-        <select id="txType" class="input">
-          <option value="expense">Výdavok</option>
-          <option value="income">Príjem</option>
-          <option value="transfer">Vlastný prevod</option>
-        </select>
-        <select id="txCategory" class="input"></select>
+
+      <div id="normalFields">
+        <input id="txName" class="input" placeholder="Názov / obchodník">
+        <div class="two">
+          <input id="txAmount" class="input" type="number" min="0" step="0.01" placeholder="Suma">
+          <input id="txDate" class="input" type="date">
+        </div>
+        <div class="two">
+          <select id="txAccount" class="input"></select>
+          <select id="txCategory" class="input"></select>
+        </div>
+        <textarea id="txNote" class="input" rows="3" placeholder="Poznámka (voliteľné)"></textarea>
       </div>
-      <textarea id="txNote" class="input" rows="3" placeholder="Poznámka (voliteľné)"></textarea>
+
+      <div id="transferFields" class="hidden">
+        <input id="trName" class="input" placeholder="Názov prevodu" value="Prevod medzi vlastnými účtami">
+        <div class="two">
+          <select id="trFrom" class="input"></select>
+          <select id="trTo" class="input"></select>
+        </div>
+        <div class="two">
+          <div>
+            <label class="field-label" id="fromLabel">Odoslané</label>
+            <input id="trFromAmount" class="input" type="number" min="0" step="0.01" placeholder="Suma">
+          </div>
+          <div>
+            <label class="field-label" id="toLabel">Prijaté</label>
+            <input id="trToAmount" class="input" type="number" min="0" step="0.01" placeholder="Suma">
+          </div>
+        </div>
+        <div class="two">
+          <input id="trFee" class="input" type="number" min="0" step="0.01" placeholder="Poplatok (v mene odosielateľa)">
+          <input id="trDate" class="input" type="date">
+        </div>
+        <div class="rate-preview" id="ratePreview">Efektívny kurz sa vypočíta po zadaní oboch súm.</div>
+      </div>
+
       <div class="modal-actions">
         <button class="secondary" id="cancelModal">Zrušiť</button>
         <button class="primary" id="saveTx">Uložiť</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="accountModal" aria-hidden="true">
+    <div class="modal-card small-modal">
+      <div class="modal-head">
+        <div><div class="eyebrow">ÚČET</div><h2 id="accountModalTitle">Upraviť účet</h2></div>
+        <button class="iconbtn" id="closeAccountModal">×</button>
+      </div>
+      <input id="accountBalance" class="input" type="number" step="0.01" placeholder="Aktuálny zostatok">
+      <div class="modal-actions">
+        <button class="secondary" id="cancelAccount">Zrušiť</button>
+        <button class="primary" id="saveAccount">Uložiť zostatok</button>
       </div>
     </div>
   </div>
