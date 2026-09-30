@@ -1,11 +1,156 @@
-<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07111f"><title>RozpočetGuru 2.2</title><link rel="stylesheet" href="style.css"></head><body><main>
-<header><div><small>OSOBNÉ FINANCIE</small><h2>Rozpočet<span>Guru</span></h2></div><button onclick="openTx()">＋ Transakcia</button></header>
-<section id="home" class="page active"><div class="hero"><small>CELKOVÝ MAJETOK</small><h1 id="worth">—</h1><p id="worthNote">Účty + investície</p><div class="stats"><div>Príjem<b id="inc">—</b></div><div>Výdavky<b id="exp">—</b></div><div>Cash-flow<b id="flow">—</b></div></div></div><h3>Účty</h3><div id="accounts" class="grid"></div><h3>Investície</h3><div id="homeInv" class="card"></div><h3>Posledné transakcie</h3><div id="recent" class="card"></div></section>
-<section id="txs" class="page"><div class="title"><h1>Transakcie</h1><button onclick="openTx()">＋ Pridať</button></div><div id="txlist" class="card"></div></section>
-<section id="guru" class="page"><h1>Guru</h1><div class="card"><b>✦ Finančný prehľad</b><p id="guruText"></p></div><div class="chat"><input id="q" placeholder="Spýtaj sa na účty alebo investície"><button onclick="ask()">Odoslať</button></div><div id="answer"></div></section>
-<section id="invest" class="page"><div class="title"><div><small>MAJETOK</small><h1>Investície</h1></div><button onclick="openInv()">＋ Pridať</button></div><div class="hero"><small>HODNOTA PORTFÓLIA</small><h1 id="pv">0 €</h1><div class="stats"><div>Vložené<b id="pc">0 €</b></div><div>Zisk / strata<b id="pg">0 €</b></div><div>Výnos<b id="pr">0 %</b></div></div></div><h3>Platformy</h3><div id="platforms" class="grid"></div><h3>Portfólio</h3><div id="invlist" class="card"></div><p class="notice">Trading 212 a fondy SLSP sa aktualizujú manuálne. Vklad do investície je presun kapitálu, nie bežná spotreba.</p></section>
-<section id="profile" class="page"><h1>Profil</h1><div class="card"><h3>Účty a meny</h3><div id="aset"></div><label>Referenčný kurz CZK za 1 €</label><input id="fx" type="number" step=".0001" placeholder="napr. 24.80"><button onclick="saveFx()">Uložiť kurz</button><p>Očakávaná mzda: <b>≈ 45 000 Kč / mesiac</b></p></div><div class="card"><h3>Investície</h3><p>Trading 212 + fondy v Slovenskej sporiteľni. Manuálna aktualizácia.</p><button onclick="nav('invest')">Otvoriť portfólio</button></div><div class="card"><h3>Dáta</h3><button onclick="backup()">Exportovať zálohu</button><p class="muted">Dáta zostávajú lokálne v tomto zariadení. Bankové napojenie neskôr iba read-only.</p></div></section>
-</main><nav><button onclick="nav('home')">⌂<small>Domov</small></button><button onclick="nav('txs')">↕<small>Transakcie</small></button><button onclick="nav('guru')">✦<small>Guru</small></button><button onclick="nav('invest')">↗<small>Investície</small></button><button onclick="nav('profile')">☻<small>Profil</small></button></nav>
-<dialog id="txdlg"><h2>Nová transakcia</h2><select id="tt"><option value="expense">Výdavok</option><option value="income">Príjem</option><option value="transfer">Vlastný prevod</option></select><input id="tn" placeholder="Názov"><input id="ta" type="number" placeholder="Suma"><select id="tacc"><option value="rb">Raiffeisenbank CZK</option><option value="slsp">SLSP EUR</option></select><input id="td" type="date"><div class="actions"><button onclick="closeTx()">Zrušiť</button><button onclick="saveTx()">Uložiť</button></div></dialog>
-<dialog id="idlg"><h2>Investícia</h2><select id="ip"><option>Trading 212</option><option>SLSP fondy</option></select><select id="it"><option>ETF</option><option>Akcia</option><option>Fond</option><option>Iné</option></select><input id="in" placeholder="Názov / ticker"><select id="ic"><option>EUR</option><option>CZK</option></select><input id="ico" type="number" placeholder="Celkom vložené"><input id="iv" type="number" placeholder="Aktuálna hodnota"><input id="idiv" type="number" placeholder="Prijaté dividendy"><input id="iu" type="date"><div class="actions"><button onclick="closeInv()">Zrušiť</button><button onclick="saveInv()">Uložiť</button></div></dialog>
-<script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>RozpočetGuru 2.3</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="shell">
+  <header class="topbar">
+    <div><div class="eyebrow">OSOBNÉ FINANCIE</div><div class="brand">Rozpočet<span>Guru</span></div></div>
+    <button class="primary compact" onclick="openTx()">＋ Transakcia</button>
+  </header>
+
+  <section id="home" class="page active">
+    <div class="hero">
+      <div class="hero-head"><div><div class="muted">Celkový majetok</div><div id="worth" class="hero-value">—</div><div id="worthNote" class="small muted">Účty + investície</div></div><span class="pill">EUR základ</span></div>
+      <div class="hero-grid">
+        <div><span>Príjem</span><strong id="inc">—</strong></div>
+        <div><span>Výdavky</span><strong id="exp">—</strong></div>
+        <div><span>Cash-flow</span><strong id="flow">—</strong></div>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>Účty</h2><button class="link" onclick="nav('profile')">Upraviť</button></div>
+    <div id="accounts" class="two-grid"></div>
+
+    <div class="section-head"><h2>Investície</h2><button class="link" onclick="nav('plan')">Portfólio</button></div>
+    <div id="homeInv" class="card"></div>
+
+    <div class="section-head"><h2>Rozpočet</h2><button class="link" onclick="nav('plan')">Plány</button></div>
+    <div id="budgetHome" class="card"></div>
+
+    <div class="section-head"><h2>Guru radí</h2></div>
+    <button class="guru-card" onclick="nav('guru')"><div class="eyebrow green">✦ POSTREH</div><strong id="homeInsightTitle">—</strong><p id="homeInsightBody" class="muted"></p></button>
+
+    <div class="section-head"><h2>Posledné transakcie</h2></div>
+    <div id="recent" class="card list"></div>
+  </section>
+
+  <section id="txs" class="page">
+    <div class="page-title"><div><div class="eyebrow">POHYBY</div><h1>Transakcie</h1></div><button class="primary compact" onclick="openTx()">＋ Pridať</button></div>
+    <div class="card filters">
+      <input id="search" class="input" placeholder="Hľadať transakciu">
+      <select id="typeFilter" class="input" onchange="render()"><option value="all">Všetky typy</option><option value="expense">Výdavky</option><option value="income">Príjmy</option><option value="transfer">Vlastné prevody</option><option value="capital">Vklady do investícií</option></select>
+    </div>
+    <div id="txlist" class="card list"></div>
+  </section>
+
+  <section id="guru" class="page">
+    <div class="page-title"><div><div class="eyebrow">AI PORADCA</div><h1>Guru</h1></div></div>
+    <div class="card guru-intro"><div class="orb">✦</div><div><strong>Finančný prehľad bez dvojitého počítania.</strong><p class="muted">Vlastné prevody a vklady do investícií nie sú bežná spotreba.</p></div></div>
+    <div id="guruCards" class="two-grid"></div>
+    <div class="card chat-card"><div id="answer" class="answer muted">Spýtaj sa na výdavky, rozpočet, ciele, Trading 212 alebo SLSP fondy.</div><div class="chat"><input id="q" class="input" placeholder="Napr. Ako som na tom tento mesiac?"><button class="primary" onclick="ask()">Odoslať</button></div></div>
+  </section>
+
+  <section id="plan" class="page">
+    <div class="page-title"><div><div class="eyebrow">MAJETOK A PLÁNY</div><h1>Plán</h1></div></div>
+
+    <div class="segmented">
+      <button class="active" data-pane="investPane" onclick="showPane('investPane',this)">Investície</button>
+      <button data-pane="budgetPane" onclick="showPane('budgetPane',this)">Rozpočty</button>
+      <button data-pane="goalPane" onclick="showPane('goalPane',this)">Ciele</button>
+    </div>
+
+    <div id="investPane" class="pane active">
+      <div class="hero compact-hero"><div class="muted">Aktuálna hodnota portfólia</div><div id="pv" class="hero-value">0 €</div><div class="hero-grid"><div><span>Vložené</span><strong id="pc">0 €</strong></div><div><span>Zisk / strata</span><strong id="pg">0 €</strong></div><div><span>Výnos</span><strong id="pr">0 %</strong></div></div></div>
+      <div class="section-head"><h2>Platformy</h2><button class="primary compact" onclick="openInv()">＋ Pridať</button></div>
+      <div id="platforms" class="two-grid"></div>
+      <div class="section-head"><h2>Portfólio</h2></div>
+      <div id="invlist" class="card list"></div>
+      <div class="notice neutral">Trading 212 a fondy SLSP sa zatiaľ aktualizujú manuálne.</div>
+    </div>
+
+    <div id="budgetPane" class="pane">
+      <div class="section-head"><div><h2>Mesačné rozpočty</h2><div class="small muted">Počítajú sa iba bežné výdavky.</div></div><button class="primary compact" onclick="openBudget()">＋ Rozpočet</button></div>
+      <div id="budgetList"></div>
+    </div>
+
+    <div id="goalPane" class="pane">
+      <div class="section-head"><div><h2>Finančné ciele</h2><div class="small muted">Rezerva, bývanie a ďalšie plány.</div></div><button class="primary compact" onclick="openGoal()">＋ Cieľ</button></div>
+      <div id="goalList"></div>
+    </div>
+  </section>
+
+  <section id="profile" class="page">
+    <div class="page-title"><div><div class="eyebrow">NASTAVENIA</div><h1>Profil</h1></div></div>
+    <div class="card settings">
+      <h3>Účty a meny</h3><p class="muted small">Aktuálne zostatky zadávaš manuálne.</p><div id="aset"></div>
+      <label>Referenčný kurz CZK za 1 €</label><div class="inline"><input id="fx" class="input" type="number" step=".0001" placeholder="napr. 24.80"><button class="secondary" onclick="saveFx()">Uložiť</button></div>
+      <div class="salary"><span class="muted small">Očakávaná čistá mzda</span><strong>≈ 45 000 Kč / mesiac</strong><span class="muted small">Raiffeisenbank CZK · iba informatívne</span></div>
+    </div>
+    <div class="card settings"><h3>Dáta a bezpečnosť</h3><div class="notice">Bankové prepojenie neskôr iba read-only. Heslo, PIN, CVV ani autorizačný kód sa do RozpočetGuru nezadávajú.</div><div class="two-grid"><button class="secondary" onclick="backup()">Exportovať</button><label class="secondary filebtn">Importovať<input id="importFile" type="file" accept="application/json" onchange="restore(this.files[0])"></label></div></div>
+  </section>
+</main>
+
+<nav class="bottom-nav">
+  <button class="active" data-page="home" onclick="nav('home')"><span>⌂</span>Domov</button>
+  <button data-page="txs" onclick="nav('txs')"><span>↕</span>Transakcie</button>
+  <button data-page="guru" onclick="nav('guru')"><span class="guru-dot">✦</span>Guru</button>
+  <button data-page="plan" onclick="nav('plan')"><span>◎</span>Plán</button>
+  <button data-page="profile" onclick="nav('profile')"><span>☻</span>Profil</button>
+</nav>
+
+<dialog id="txdlg">
+  <div class="dialog-head"><div><div class="eyebrow">TRANSAKCIA</div><h2 id="txTitle">Nová transakcia</h2></div><button class="icon" onclick="closeTx()">×</button></div>
+  <select id="tt" class="input" onchange="txTypeChanged()"><option value="expense">Výdavok</option><option value="income">Príjem</option><option value="transfer">Vlastný prevod</option><option value="capital">Vklad do investície</option></select>
+  <div id="normalTx">
+    <input id="tn" class="input" placeholder="Názov / obchodník">
+    <div class="two-grid"><input id="ta" class="input" type="number" min="0" step=".01" placeholder="Suma"><input id="td" class="input" type="date"></div>
+    <div class="two-grid"><select id="tacc" class="input"></select><select id="tcat" class="input"></select></div>
+    <input id="tnote" class="input" placeholder="Poznámka (voliteľné)">
+  </div>
+  <div id="transferTx" class="hidden">
+    <input id="trn" class="input" value="Prevod medzi vlastnými účtami">
+    <div class="two-grid"><select id="trfrom" class="input" onchange="ratePreview()"></select><select id="trto" class="input" onchange="ratePreview()"></select></div>
+    <div class="two-grid"><input id="trfa" class="input" type="number" min="0" step=".01" placeholder="Odoslané"><input id="trta" class="input" type="number" min="0" step=".01" placeholder="Prijaté"></div>
+    <div class="two-grid"><input id="trfee" class="input" type="number" min="0" step=".01" placeholder="Poplatok v mene odosielateľa"><input id="trd" class="input" type="date"></div>
+    <div id="rateBox" class="notice neutral small">Po zadaní oboch súm vypočítam efektívny kurz.</div>
+  </div>
+  <div id="capitalTx" class="hidden">
+    <input id="capn" class="input" value="Vklad do investícií">
+    <div class="two-grid"><select id="capacc" class="input"></select><select id="capplatform" class="input"><option>Trading 212</option><option>SLSP fondy</option></select></div>
+    <div class="two-grid"><input id="capa" class="input" type="number" min="0" step=".01" placeholder="Suma"><input id="capd" class="input" type="date"></div>
+    <div class="notice neutral small">Tento pohyb sa nezapočíta do bežných výdavkov.</div>
+  </div>
+  <div class="actions"><button class="secondary" onclick="closeTx()">Zrušiť</button><button class="primary" onclick="saveTx()">Uložiť</button></div>
+</dialog>
+
+<dialog id="idlg">
+  <div class="dialog-head"><div><div class="eyebrow">INVESTÍCIA</div><h2 id="invTitle">Nová investícia</h2></div><button class="icon" onclick="closeInv()">×</button></div>
+  <div class="two-grid"><select id="ip" class="input"><option>Trading 212</option><option>SLSP fondy</option></select><select id="it" class="input"><option>ETF</option><option>Akcia</option><option>Fond</option><option>Iné</option></select></div>
+  <input id="in" class="input" placeholder="Názov investície / fondu">
+  <div class="two-grid"><input id="ticker" class="input" placeholder="Ticker (voliteľné)"><select id="ic" class="input"><option>EUR</option><option>CZK</option></select></div>
+  <div class="two-grid"><input id="ico" class="input" type="number" min="0" step=".01" placeholder="Celkom vložené"><input id="iv" class="input" type="number" min="0" step=".01" placeholder="Aktuálna hodnota"></div>
+  <div class="two-grid"><input id="idiv" class="input" type="number" min="0" step=".01" placeholder="Prijaté dividendy"><input id="iu" class="input" type="date"></div>
+  <div class="actions"><button class="secondary" onclick="closeInv()">Zrušiť</button><button class="primary" onclick="saveInv()">Uložiť</button></div>
+</dialog>
+
+<dialog id="bdlg">
+  <div class="dialog-head"><div><div class="eyebrow">ROZPOČET</div><h2>Mesačný limit</h2></div><button class="icon" onclick="closeBudget()">×</button></div>
+  <select id="bcat" class="input"></select><input id="blimit" class="input" type="number" min="0" step=".01" placeholder="Limit v €">
+  <div class="actions"><button class="secondary" onclick="closeBudget()">Zrušiť</button><button class="primary" onclick="saveBudget()">Uložiť</button></div>
+</dialog>
+
+<dialog id="gdlg">
+  <div class="dialog-head"><div><div class="eyebrow">CIEĽ</div><h2 id="goalTitle">Nový cieľ</h2></div><button class="icon" onclick="closeGoal()">×</button></div>
+  <input id="gn" class="input" placeholder="Názov cieľa"><div class="two-grid"><input id="gc" class="input" type="number" min="0" step=".01" placeholder="Aktuálne €"><input id="gt" class="input" type="number" min="0" step=".01" placeholder="Cieľ €"></div><input id="gd" class="input" type="date">
+  <div class="actions"><button class="secondary" onclick="closeGoal()">Zrušiť</button><button class="primary" onclick="saveGoal()">Uložiť</button></div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
