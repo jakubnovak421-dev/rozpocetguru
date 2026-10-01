@@ -411,17 +411,150 @@ function delGoal(id){if(confirm("Zmazať cieľ?")){G=G.filter(x=>x.id!==id);save
 
 function ask(){if(typeof askGuru==='function')askGuru();}
 
-function backup(){
-  const data={version:"2.6",accounts:A,transactions:T,investments:I,budgets:B,goals:G,fxRateCZKPerEUR:FX,expectedSalaryCZK:45000};
-  const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="rozpocetguru-2.6-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+// --- Local Encryption & Decryption (PBKDF2 + AES-256-GCM via Web Crypto API) ---
+function bufferToBase64(buffer){
+  let binary='';const bytes=new Uint8Array(buffer);
+  for(let i=0;i<bytes.byteLength;i++){binary+=String.fromCharCode(bytes[i]);}
+  return btoa(binary);
 }
-function readFileText(file){return typeof file.text==='function'?file.text():new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Súbor sa nepodarilo prečítať. Skús ho uložiť do Stiahnutých súborov.'));reader.readAsText(file)});}
-function previewStatementText(){const content=$('#statementText').value;return previewStatement({name:'vlozeny.json',size:new Blob([content]).size,text:async()=>content});}
-async function restore(file){
- if(!file)return;
- try{
-  if(file.size>10*1024*1024)throw Error('Záloha je príliš veľká.');
-  const d=JSON.parse((await readFileText(file)).replace(/^\uFEFF/,''));
+function base64ToBuffer(base64){
+  const binary=atob(base64);const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++){bytes[i]=binary.charCodeAt(i);}
+  return bytes.buffer;
+}
+async function deriveKey(password, saltBuffer){
+  const enc=new TextEncoder();
+  const passKey=await window.crypto.subtle.importKey("raw", enc.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
+  return await window.crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:saltBuffer, iterations:250000, hash:"SHA-256"},
+    passKey,
+    {name:"AES-GCM", length:256},
+    false,
+    ["encrypt","decrypt"]
+  );
+}
+async function encryptData(plainText, password){
+  const enc=new TextEncoder();
+  const salt=window.crypto.getRandomValues(new Uint8Array(16));
+  const iv=window.crypto.getRandomValues(new Uint8Array(12));
+  const key=await deriveKey(password, salt);
+  const encrypted=await window.crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(plainText));
+  return {
+    schema:"rozpocetguru-encrypted-backup-v1",
+    kdf:"PBKDF2-SHA256",
+    iterations:250000,
+    cipher:"AES-256-GCM",
+    salt:bufferToBase64(salt),
+    iv:bufferToBase64(iv),
+    data:bufferToBase64(encrypted)
+  };
+}
+async function decryptData(encryptedObj, password){
+  const salt=new Uint8Array(base64ToBuffer(encryptedObj.salt));
+  const iv=new Uint8Array(base64ToBuffer(encryptedObj.iv));
+  const ciphertext=base64ToBuffer(encryptedObj.data);
+  const key=await deriveKey(password, salt);
+  const decryptedBuffer=await window.crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ciphertext);
+  const dec=new TextDecoder();
+  return dec.decode(decryptedBuffer);
+}
+
+// Dialog management & export/restore handlers
+function openExportDlg(){
+  $("#exportEncryptToggle").checked=false;
+  $("#exportPass").value="";
+  $("#exportPassConfirm").value="";
+  $("#exportPasswordFields").classList.add("hidden");
+  $("#exportError").classList.add("hidden");
+  $("#exportError").textContent="";
+  $("#exportDlg").showModal();
+}
+function closeExportDlg(){
+  $("#exportPass").value="";
+  $("#exportPassConfirm").value="";
+  $("#exportDlg").close();
+}
+function toggleExportPasswordFields(){
+  const enc=$("#exportEncryptToggle").checked;
+  $("#exportPasswordFields").classList.toggle("hidden", !enc);
+  if(!enc){
+    $("#exportError").classList.add("hidden");
+    $("#exportPass").value="";
+    $("#exportPassConfirm").value="";
+  }
+}
+async function processExport(){
+  const data={version:"2.6",accounts:A,transactions:T,investments:I,budgets:B,goals:G,fxRateCZKPerEUR:FX,expectedSalaryCZK:45000};
+  const jsonStr=JSON.stringify(data,null,2);
+  const wantEncrypt=$("#exportEncryptToggle").checked;
+
+  if(wantEncrypt){
+    const pass=$("#exportPass").value;
+    const passConfirm=$("#exportPassConfirm").value;
+    if(!pass||pass.length<4){
+      $("#exportError").textContent="Heslo musí mať aspoň 4 znaky.";
+      $("#exportError").classList.remove("hidden");
+      return;
+    }
+    if(pass!==passConfirm){
+      $("#exportError").textContent="Heslá sa nezhodujú. Skontroluj zadanie.";
+      $("#exportError").classList.remove("hidden");
+      return;
+    }
+    $("#exportError").classList.add("hidden");
+    try{
+      const encObj=await encryptData(jsonStr, pass);
+      const encStr=JSON.stringify(encObj,null,2);
+      downloadBlob(encStr, "rozpocetguru-2.6-encrypted-backup.json");
+      closeExportDlg();
+    }catch(e){
+      $("#exportError").textContent="Šifrovanie zlyhalo: "+(e.message||"Neznáma chyba");
+      $("#exportError").classList.remove("hidden");
+    }
+  } else {
+    downloadBlob(jsonStr, "rozpocetguru-2.6-backup.json");
+    closeExportDlg();
+  }
+}
+function downloadBlob(content, fileName){
+  const b=new Blob([content],{type:"application/json"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(b);
+  a.download=fileName;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),500);
+}
+
+function backup(){
+  openExportDlg();
+}
+
+let pendingEncryptedRestoreObj=null;
+function closeImportPasswordDlg(){
+  pendingEncryptedRestoreObj=null;
+  $("#importPass").value="";
+  $("#importPasswordError").classList.add("hidden");
+  $("#importPasswordDlg").close();
+}
+async function processEncryptedRestore(){
+  if(!pendingEncryptedRestoreObj)return;
+  const pass=$("#importPass").value;
+  if(!pass){
+    $("#importPasswordError").textContent="Zadaj heslo zálohy.";
+    $("#importPasswordError").classList.remove("hidden");
+    return;
+  }
+  try{
+    const decryptedJson=await decryptData(pendingEncryptedRestoreObj, pass);
+    const data=JSON.parse(decryptedJson);
+    closeImportPasswordDlg();
+    applyBackupData(data);
+  }catch(e){
+    $("#importPasswordError").textContent="Nesprávne heslo alebo poškodený súbor zálohy.";
+    $("#importPasswordError").classList.remove("hidden");
+  }
+}
+
+function applyBackupData(d){
   if(d.schema)throw Error('Toto je výpis. Načítaj ho vyššie cez Bankové výpisy.');
   if(!d||!Array.isArray(d.accounts)||!Array.isArray(d.transactions)||!Array.isArray(d.investments)||!Array.isArray(d.budgets||[])||!Array.isArray(d.goals||[])||!d.accounts.length)throw Error('Neplatná záloha.');
   if(d.accounts.some(a=>!a||typeof a.id!=='string'||typeof a.name!=='string'||!['EUR','CZK'].includes(a.currency)||(a.balance!=null&&!Number.isFinite(a.balance))))throw Error('Neplatné účty v zálohe.');
@@ -433,6 +566,26 @@ async function restore(file){
   const entries=[[AKEY,d.accounts],[TKEY,d.transactions],[IKEY,d.investments],[BKEY,d.budgets||[]],[GKEY,d.goals||[]],[FKEY,fx]],old=entries.map(([k])=>[k,localStorage.getItem(k)]);
   try{for(const [k,v]of entries)localStorage.setItem(k,JSON.stringify(v))}catch(e){for(const[k,v]of old){if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}throw e}
   A=d.accounts;T=d.transactions;I=d.investments;B=d.budgets||[];G=d.goals||[];FX=fx;render();alert('Záloha bola obnovená.');
+}
+
+function readFileText(file){return typeof file.text==='function'?file.text():new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Súbor sa nepodarilo prečítať. Skús ho uložiť do Stiahnutých súborov.'));reader.readAsText(file)});}
+function previewStatementText(){const content=$('#statementText').value;return previewStatement({name:'vlozeny.json',size:new Blob([content]).size,text:async()=>content});}
+async function restore(file){
+ if(!file)return;
+ try{
+  if(file.size>10*1024*1024)throw Error('Záloha je príliš veľká.');
+  const rawText=await readFileText(file);
+  const parsed=JSON.parse(rawText.replace(/^\uFEFF/,''));
+
+  if(parsed&&parsed.schema==='rozpocetguru-encrypted-backup-v1'){
+    pendingEncryptedRestoreObj=parsed;
+    $("#importPass").value="";
+    $("#importPasswordError").classList.add("hidden");
+    $("#importPasswordDlg").showModal();
+    return;
+  }
+
+  applyBackupData(parsed);
  }catch(e){alert(e instanceof SyntaxError?'Súbor nie je platná JSON záloha.':e.message||'Zálohu sa nepodarilo obnoviť.')}
 }
 

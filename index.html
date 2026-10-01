@@ -107,7 +107,7 @@
       <div class="salary"><span class="muted small">Očakávaná čistá mzda</span><strong>≈ 45 000 Kč / mesiac</strong><span class="muted small">Raiffeisenbank CZK · iba informatívne</span></div>
     </div>
     <div class="card settings"><h3>Bankové výpisy</h3><p class="muted small">Import spracovaných výpisov pridá transakcie a zachová existujúce dáta. Zostatky a portfólio sa nemenia. Pred importom odporúčame exportovať zálohu.</p><label for="statementFile">Vyber spracovaný výpis (.json)</label><input id="statementFile" class="input" type="file" onchange="previewStatement(this.files[0]);this.value=''" aria-describedby="importHelp"><p id="importHelp" class="small muted">Vyber transakcie-2026-08.json zo Stiahnutých súborov. PDF a ZIP tu zatiaľ nemožno načítať.</p><details><summary>Alternatíva: vložiť obsah JSON</summary><textarea id="statementText" class="input" rows="5" placeholder="Vlož celý obsah spracovaného JSON"></textarea><button class="secondary" onclick="previewStatementText()">Skontrolovať vložené údaje</button></details><div id="statementPreview"></div></div>
-    <div class="card settings"><h3>Dáta a bezpečnosť</h3><div class="notice">Bankové prepojenie neskôr iba read-only. Heslo, PIN, CVV ani autorizačný kód sa do RozpočetGuru nezadávajú.</div><div class="two-grid"><button class="secondary" onclick="backup()">Exportovať</button><div><label for="importFile">Obnoviť zálohu (.json)</label><input id="importFile" class="input" type="file" onchange="restore(this.files[0]);this.value=''"></div></div></div>
+    <div class="card settings"><h3>Dáta a bezpečnosť</h3><div class="notice">Bankové prepojenie neskôr iba read-only. Heslo, PIN, CVV ani autorizačný kód sa do RozpočetGuru nezadávajú.</div><div class="two-grid"><button class="secondary" onclick="openExportDlg()">Exportovať zálohu</button><div><label for="importFile">Obnoviť zálohu (.json)</label><input id="importFile" class="input" type="file" onchange="restore(this.files[0]);this.value=''"></div></div></div>
   </section>
 </main>
 
@@ -164,6 +164,30 @@
   <div class="dialog-head"><div><div class="eyebrow">CIEĽ</div><h2 id="goalTitle">Nový cieľ</h2></div><button class="icon" onclick="closeGoal()">×</button></div>
   <input id="gn" class="input" placeholder="Názov cieľa"><div class="two-grid"><input id="gc" class="input" type="number" min="0" step=".01" placeholder="Aktuálne €"><input id="gt" class="input" type="number" min="0" step=".01" placeholder="Cieľ €"></div><input id="gd" class="input" type="date">
   <div class="actions"><button class="secondary" onclick="closeGoal()">Zrušiť</button><button class="primary" onclick="saveGoal()">Uložiť</button></div>
+</dialog>
+
+<dialog id="exportDlg">
+  <div class="dialog-head"><div><div class="eyebrow">EXPORT ZÁLOHY</div><h2>Vyber spôsob exportu</h2></div><button class="icon" onclick="closeExportDlg()">×</button></div>
+  <p class="muted small">Exportovanú zálohu si môžeš uložiť bez šifrovania alebo zabezpečenú vlastným heslom. Šifrovanie prebieha lokálne priamo v tvojom zariadení (AES-256-GCM, PBKDF2).</p>
+  <label for="exportEncryptToggle" class="inline-checkbox"><input type="checkbox" id="exportEncryptToggle" onchange="toggleExportPasswordFields()"> Zašifrovať zálohu heslom</label>
+  <div id="exportPasswordFields" class="hidden">
+    <label for="exportPass">Heslo pre šifrovanie</label>
+    <input id="exportPass" class="input" type="password" placeholder="Zadaj heslo (min. 4 znaky)" autocomplete="new-password">
+    <label for="exportPassConfirm">Potvrdenie hesla</label>
+    <input id="exportPassConfirm" class="input" type="password" placeholder="Zadaj heslo znova" autocomplete="new-password">
+    <p class="small muted">Aplikácia heslo neukladá. Ak ho zabudneš, šifrovanú zálohu nebude možné obnoviť.</p>
+  </div>
+  <div id="exportError" class="notice negative small hidden"></div>
+  <div class="actions"><button class="secondary" onclick="closeExportDlg()">Zrušiť</button><button class="primary" onclick="processExport()">Stiahnuť zálohu</button></div>
+</dialog>
+
+<dialog id="importPasswordDlg">
+  <div class="dialog-head"><div><div class="eyebrow">ŠIFROVANÁ ZÁLOHA</div><h2>Zadaj heslo zálohy</h2></div><button class="icon" onclick="closeImportPasswordDlg()">×</button></div>
+  <p class="muted small">Súbor je zašifrovaný lokálnym kľúčom. Pre obnovenie zadaj heslo, ktorým bol export vytvorený.</p>
+  <label for="importPass">Heslo zálohy</label>
+  <input id="importPass" class="input" type="password" placeholder="Zadaj heslo" autocomplete="current-password">
+  <div id="importPasswordError" class="notice negative small hidden"></div>
+  <div class="actions"><button class="secondary" onclick="closeImportPasswordDlg()">Zrušiť</button><button class="primary" onclick="processEncryptedRestore()">Obnoviť zálohu</button></div>
 </dialog>
 
 <dialog id="reviewdlg"><h2>Zaradenie transakcie</h2><div id="reviewDescription" class="notice neutral small"></div><label>Typ pohybu</label><select id="reviewKind" class="input"><option value="unresolved">Na kontrolu</option><option value="expense">Výdavok / spotreba</option><option value="income">Príjem / zárobok</option><option value="own_transfer">Vlastný prevod</option><option value="investment_outflow">Vklad do investícií</option><option value="investment_inflow">Výber / refundácia investícií</option><option value="cash_deposit">Vklad hotovosti</option><option value="cash_withdrawal">Výber hotovosti</option><option value="debt_payment">Splátka (rozpis neznámy)</option><option value="repayment">Vrátenie peňazí</option><option value="loan_principal">Splátka istiny</option><option value="refund">Refundácia</option><option value="own_fx_transfer">Vlastná menová konverzia</option></select><label>Kategória</label><input id="reviewCategory" class="input"><div class="actions"><button class="secondary" onclick="$('#reviewdlg').close()">Zrušiť</button><button class="primary" onclick="saveReview()">Potvrdiť zaradenie</button></div></dialog>
