@@ -5,3 +5,6 @@ build/
 *.iml
 local.properties
 .DS_Store
+
+# Stavebný archív web build sources (filtered by its own .gitignore)
+!/stavebny-archiv/web/build/

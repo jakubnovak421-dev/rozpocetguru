@@ -1,0 +1,4 @@
+import {limitedBody} from '@/lib/body';
+import {archive,json,errorResponse} from '@/lib/server';
+import {AppError} from '@/lib/archive';
+export async function POST(req:Request){try{const a=archive(req);if(Number(req.headers.get('content-length')||0)>21*1024*1024)throw new AppError('Najväčší súbor môže mať 20 MB.',413);const bytes=await limitedBody(req,21*1024*1024);const f=await new Response(bytes.buffer as ArrayBuffer,{headers:{'Content-Type':req.headers.get('content-type')||''}}).formData(),file=f.get('file');if(!(file instanceof File))throw new AppError('Vyber súbor.');if(file.size>20*1024*1024)throw new AppError('Najväčší súbor môže mať 20 MB.',413);return json(await a.upload({project_id:f.get('project_id'),record_id:f.get('record_id')||undefined,name:file.name,kind:f.get('kind'),request_id:f.get('request_id')},await file.arrayBuffer(),file.type));}catch(e){return errorResponse(e);}}

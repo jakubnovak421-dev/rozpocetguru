@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import {readFile,writeFile,unlink} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import ts from 'typescript';
+const require=createRequire(import.meta.url),wr=createRequire(require.resolve('wrangler/package.json'));
+const {Miniflare}=wr('miniflare');
+const source=await readFile(new URL('../lib/archive.ts',import.meta.url),'utf8');
+const moduleUrl=new URL('../lib/archive.test-build.mjs',import.meta.url);
+await writeFile(moduleUrl,ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText);
+const {Archive,identity}=await import(moduleUrl.href);
+const mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test");}}',compatibilityDate:'2026-05-15',d1Databases:{DB:'test'},r2Buckets:['BUCKET']});
+let checks=0;
+function check(v){assert.ok(v);checks++;}
+try{
+ const db=await mf.getD1Database('DB'),bucket=await mf.getR2Bucket('BUCKET');
+ const sql=await readFile(new URL('../drizzle/0000_wise_lifeguard.sql',import.meta.url),'utf8');
+ for(const statement of sql.split('--> statement-breakpoint').map(x=>x.trim()).filter(Boolean))await db.prepare(statement).run();
+ const a=new Archive(db,bucket,'alice'),b=new Archive(db,bucket,'bob');
+ assert.throws(()=>identity(new Request('https://test.local/api/archive')),e=>e.status===401);checks++;
+ assert.throws(()=>identity(new Request('https://test.local/api/archive',{headers:{'oai-authenticated-user-id':'alice','oai-authenticated-user-email':'alice@example.test',origin:'https://evil.test'}})),e=>e.status===403);checks++;
+ const p=await a.createProject({name:'Testovacia stavba',code:'TEST',request_id:'project-001'});
+ const replay=await a.createProject({name:'Testovacia stavba',code:'TEST',request_id:'project-001'});check(p.id===replay.id&&(await a.listProjects()).length===1);
+ await assert.rejects(()=>a.createProject({name:'Iné údaje',request_id:'project-001'}),e=>e.status===409);checks++;
+ check((await b.listProjects()).length===0);
+ await assert.rejects(()=>b.project(p.id),e=>e.status===404);checks++;
+ const input={project_id:p.id,title:'VT skúška A27',kind:'water',date:'2026-10-12',data:{vrt:'A27',voda:5,minuty:10},request_id:'record-0001'};
+ const results=await Promise.all([a.createRecord(input),a.createRecord(input)]);check(results[0].id===results[1].id);
+ const r=results[0];check((await a.listRecords()).length===1);
+ await assert.rejects(()=>b.getRecord(r.id),e=>e.status===404);checks++;
+ await assert.rejects(()=>b.createRecord({...input,request_id:'foreign-0001'}),e=>e.status===404);checks++;
+ await a.updateRecord({id:r.id,expected_version:1,title:r.title,date:r.date,data:{...r.data,voda:10},request_id:'update-0001'});
+ check((await a.versions(r.id)).length===2);check((await a.versions(r.id))[1].snapshot.data.voda===5);
+ await assert.rejects(()=>a.updateRecord({id:r.id,expected_version:1,title:'Stale',date:r.date,data:{},request_id:'update-0002'}),e=>e.status===409);checks++;
+ const current=await new Archive(db,bucket,'alice').getRecord(r.id);check(current.data.voda===10&&current.version===2);
+ const races=await Promise.allSettled([1,2].map(n=>a.updateRecord({id:r.id,expected_version:2,title:'Concurrent '+n,date:r.date,data:{voda:n},request_id:'parallel-'+n})));
+ check(races.filter(x=>x.status==='fulfilled').length===1);check((await a.versions(r.id)).length===3);
+ const bytes=new TextEncoder().encode('%PDF-1.4\n% Test original bytes').buffer;
+ const f=await a.upload({project_id:p.id,record_id:r.id,name:'original.pdf',kind:'attachment',request_id:'file-0001'},bytes,'application/pdf');
+ const f2=await a.upload({project_id:p.id,record_id:r.id,name:'original.pdf',kind:'attachment',request_id:'file-0001'},bytes,'application/pdf');check(f.id===f2.id);
+ const stored=await new Archive(db,bucket,'alice').file(f.id);check(Buffer.from(await stored.body.arrayBuffer()).equals(Buffer.from(bytes)));
+ await assert.rejects(()=>b.file(f.id),e=>e.status===404);checks++;
+ await assert.rejects(()=>b.versions(r.id),e=>e.status===404);checks++;
+ check((await b.listFiles()).length===0);
+ await assert.rejects(()=>a.upload({project_id:p.id,name:'bad.pdf',kind:'attachment',request_id:'file-0002'},new TextEncoder().encode('<script>bad</script>').buffer,'application/pdf'));checks++;
+ await assert.rejects(()=>a.createRecord({...input,date:'2026-02-30',request_id:'invalid-date'}));checks++;
+ console.log(`${checks} checks passed: authorization, owner isolation, persistent readback, revisions, stale writes, concurrent writes, request replay and original file bytes.`);
+}finally{await mf.dispose();await unlink(moduleUrl);}
